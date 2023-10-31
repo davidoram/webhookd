@@ -4,8 +4,14 @@ services:
   app:
     image: davidoram/go-kafka-client:1.4.4
     volumes:
-      - ..:/workspace:cached
+      - ../..:/workspace:cached
     command: sleep infinity
 
   kafka:
     image: davidoram/kafka:0.10.0.1
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+    ports:
+      - "9092:9092"
+      - "9075:9075"
+      - "2081:2081"

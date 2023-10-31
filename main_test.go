@@ -1,30 +1,26 @@
 package main
 
 import (
-	"context"
+	"net"
 	"testing"
-
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"time"
 )
 
-func TestWithKafka_0_10_1(t *testing.T) {
-	ctx := context.Background()
-	req := testcontainers.ContainerRequest{
-		Image:        "redis:latest",
-		ExposedPorts: []string{"6379/tcp"},
-		WaitingFor:   wait.ForLog("Ready to accept connections"),
+func TestKafkaRunning(t *testing.T) {
+	if !testConnection("kafka", "9092") {
+		t.Errorf("Can't connect to kafka:9092 - clients")
 	}
-	redisC, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	if !testConnection("kafka", "2081") {
+		t.Errorf("Can't connect to kafka:2081 - zookeeper")
+	}
+}
+
+func testConnection(host string, port string) bool {
+	address := net.JoinHostPort(host, port)
+	conn, err := net.DialTimeout("tcp", address, time.Second*1)
 	if err != nil {
-		panic(err)
+		return false
 	}
-	defer func() {
-		if err := redisC.Terminate(ctx); err != nil {
-			panic(err)
-		}
-	}()
+	conn.Close()
+	return true
 }
