@@ -1,0 +1,22 @@
+// .devcontainer/devcontainer.json
+{
+    "name": "Go Kafka Client",
+    "dockerComposeFile": "./docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspace",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "go.toolsManagement.checkForUpdates": "local",
+                "go.useLanguageServer": true
+            },
+            "extensions": [
+                "golang.Go"
+            ]
+        }
+    },
+    "forwardPorts": [
+        9092
+    ],
+    "postCreateCommand": "go mod download"
+}
