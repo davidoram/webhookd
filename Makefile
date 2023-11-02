@@ -1,3 +1,4 @@
+.PHONY: test build
 test:
 	CGO_ENABLED=1 \
     CGO_LDFLAGS="-L/usr/local" \
@@ -7,4 +8,4 @@ build:
 	mkdir -p build 
 	CGO_ENABLED=1 \
     CGO_LDFLAGS="-L/usr/local" \
-	go build -tags=dynamic main.go -o build/webhookd
+	go build -o build/webhookd -tags=dynamic main.go 
