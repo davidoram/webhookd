@@ -24,33 +24,6 @@ func TestKafkaRunning(t *testing.T) {
 	}
 }
 
-type TestDestination struct {
-	t       *testing.T
-	Batches [][]*kafka.Message
-	SendOK  bool
-	Events  chan BatchEvent
-}
-
-type BatchEvent struct {
-	Index    int
-	Messages []*kafka.Message
-}
-
-func NewTestDest(t *testing.T) *TestDestination {
-	return &TestDestination{
-		t:       t,
-		Batches: make([][]*kafka.Message, 0),
-		SendOK:  true,
-		Events:  make(chan BatchEvent),
-	}
-}
-func (wh *TestDestination) Send(msgs []*kafka.Message) bool {
-	wh.t.Logf("TestDestination received batch %d with %d messages", len(wh.Batches), len(msgs))
-	wh.Events <- BatchEvent{Index: len(wh.Batches), Messages: msgs}
-	wh.Batches = append(wh.Batches, msgs)
-	return wh.SendOK
-}
-
 const (
 	KafkaHost = "kafka"
 	KafkaPort = "9092"
@@ -63,14 +36,14 @@ func TestSubscription(t *testing.T) {
 	producer := testProducer(t)
 	defer producer.Close()
 
-	dest := NewTestDest(t)
+	dest := NewBufferDestination(t)
 	var loggingLevel = new(slog.LevelVar)
 	loggingLevel.Set(slog.LevelDebug)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
-		Source: Source{
+		Source: Topic{
 			Topic:      topic,
 			JMESFilter: "",
 		},

@@ -8,10 +8,13 @@
         "vscode": {
             "settings": {
                 "go.toolsManagement.checkForUpdates": "local",
-                "go.useLanguageServer": true
+                "go.useLanguageServer": true,
+                "go.testTags": "dynamic,testing"
             },
             "extensions": [
-                "golang.Go"
+                "GitHub.copilot",
+                "golang.go",
+                "GitHub.vscode-pull-request-github"
             ]
         }
     },
