@@ -15,12 +15,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	KafkaHost     = "localhost"
+	KafkaPort     = "9092"
+	ZooKeeperPort = "2081"
+)
+
 func TestKafkaRunning(t *testing.T) {
-	if !testConnection("kafka", "9092") {
-		t.Errorf("Can't connect to kafka:9092 - clients")
+	if !testConnection(KafkaHost, KafkaPort) {
+		t.Errorf("Can't connect to %s:%s - clients", KafkaHost, KafkaPort)
 	}
-	if !testConnection("kafka", "2081") {
-		t.Errorf("Can't connect to kafka:2081 - zookeeper")
+	if !testConnection(KafkaHost, ZooKeeperPort) {
+		t.Errorf("Can't connect to %s:%s - zookeeper", KafkaHost, ZooKeeperPort)
 	}
 }
 
@@ -50,11 +56,6 @@ func (wh *TestDestination) Send(msgs []*kafka.Message) bool {
 	wh.Batches = append(wh.Batches, msgs)
 	return wh.SendOK
 }
-
-const (
-	KafkaHost = "kafka"
-	KafkaPort = "9092"
-)
 
 func TestSubscription(t *testing.T) {
 	require.True(t, testConnection(KafkaHost, KafkaPort))
