@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // import (
 // 	"context"
 // 	"flag"
@@ -16,7 +18,9 @@ package main
 // 	KafkaBootstrapServers string
 // }
 
-// func main() {
+func main() {
+	fmt.Printf("hello")
+}
 
 // 	// Parse command line arguments into Options struct
 // 	options, err := parseArgs()

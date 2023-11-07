@@ -16,17 +16,19 @@ import (
 )
 
 func TestKafkaRunning(t *testing.T) {
-	if !testConnection("kafka", "9092") {
+	if !testConnection(KafkaHost, KafkaPort) {
 		t.Errorf("Can't connect to kafka:9092 - clients")
 	}
-	if !testConnection("kafka", "2081") {
+	if !testConnection(KafkaHost, ZookeeperPort) {
 		t.Errorf("Can't connect to kafka:2081 - zookeeper")
 	}
 }
 
 const (
-	KafkaHost = "kafka"
-	KafkaPort = "9092"
+	// Need to use localhost here, as the kafka container is not on the same network as the test
+	KafkaHost     = "localhost"
+	KafkaPort     = "9092"
+	ZookeeperPort = "2081"
 )
 
 func TestSubscription(t *testing.T) {
@@ -49,7 +51,9 @@ func TestSubscription(t *testing.T) {
 		WithTopic(topic).
 		WithConfig(Config{BatchSize: 1}).
 		WithLogger(logger)
-	TestEventListener{t}.ListenAndLog(&s)
+	// tel := TestEventListener{T: t}
+	// tel.ListenAndLog(&s)
+	// defer tel.Close()
 	err := s.Start(ctx)
 	require.NoError(t, err)
 	go s.Consume(ctx)
@@ -58,12 +62,11 @@ func TestSubscription(t *testing.T) {
 	sendMsgBlocking(t, producer, key, "msg-1", topic)
 
 	t.Logf("wait for batch to arrive...")
-	event := <-dest.Events
+	dest.RequireBatchesArrived(t, 1, 5*time.Second)
 	t.Logf("checking batch")
-	assert.Equal(t, 0, event.Index)
-	require.Equal(t, 1, len(event.Messages))
-	assert.Equal(t, key, string(event.Messages[0].Key))
-	assert.Equal(t, "msg-1", string(event.Messages[0].Value))
+	assert.Equal(t, 1, len(dest.Batches[0]), "batch size mismatch")
+	assert.Equal(t, key, string(dest.Batches[0][0].Key), "key mismatch")
+	assert.Equal(t, key, string(dest.Batches[0][0].Value), "value mismatch")
 }
 
 func testProducer(t *testing.T) *kafka.Producer {

@@ -2,7 +2,7 @@
 test:
 	CGO_ENABLED=1 \
     CGO_LDFLAGS="-L/usr/local" \
-	go test -tags=dynamic -count=1 -v ./...
+	go test -tags=dynamic -timeout=10s -count=1 -v ./...
 
 build:
 	mkdir -p build 

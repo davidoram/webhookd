@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -45,53 +44,42 @@ func (e Event) String() string {
 	return sb.String()
 }
 
-type EventChannel chan Event
+type EventCallback func(Event)
+type Closer func()
 
 type Emitter struct {
-	listeners []EventChannel
+	listeners []EventCallback
 }
 
-// AddListener adds a listener to the event emitter.
-//
-// To listen for events and block until available you would do something like this:
-//
-//	event := <-dest.Events.
-//
-// ... or if you want to avoid blocking wrap it in a select statement, like this:
-//
-// select {
-// case event := <-dest.Events:
-//
-//	// handle event
-//
-// default:
-//
-//	    // do something else if no event is available
-//	}
-func (e *Emitter) AddListener() EventChannel {
-	listener := make(EventChannel, 10)
-	e.listeners = append(e.listeners, listener)
-	return listener
-}
-
-// RemoveListener removes a listener from the event emitter.
-func (e *Emitter) RemoveListener(listenerToRemove EventChannel) {
-	for i, listener := range e.listeners {
-		if listener == listenerToRemove {
-			// Remove the listener from the slice
-			e.listeners = append(e.listeners[:i], e.listeners[i+1:]...)
-			break
-		}
+func NewEmitter() *Emitter {
+	return &Emitter{
+		listeners: make([]EventCallback, 0),
 	}
 }
 
-// Emit emits an event to all listeners.
+func (e *Emitter) AddListener(cb EventCallback) Closer {
+	e.listeners = append(e.listeners, cb)
+
+	// determine the index of the callback
+	index := len(e.listeners) - 1
+
+	// return a function that will remove the callback from the slice
+	return func() {
+		e.listeners = append(e.listeners[:index], e.listeners[index+1:]...)
+	}
+}
+
+// Emit sends an event to all listeners.
 func (e *Emitter) Emit(event Event) {
-	// for _, listener := range e.listeners {
-	// 	select {
-	// 	case listener <- event: // Write was successful
-	// 	default: // Channel was full
-	// 	}
-	// }
-	slog.Info("emit", slog.Any("event", event))
+	for _, cb := range e.listeners {
+		// cope with panics in the callback
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("recovered from panic in event listener: %v\n", r)
+			}
+		}()
+		// make a copy of the event, so that the listener can't modify it
+		eventCopy := event
+		cb(eventCopy)
+	}
 }
