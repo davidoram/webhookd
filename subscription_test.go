@@ -32,6 +32,9 @@ const (
 func TestSubscription(t *testing.T) {
 	require.True(t, testConnection(KafkaHost, KafkaPort))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := testProducer(t)
 	defer producer.Close()
@@ -40,24 +43,15 @@ func TestSubscription(t *testing.T) {
 	var loggingLevel = new(slog.LevelVar)
 	loggingLevel.Set(slog.LevelDebug)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
-	s := Subscription{
-		Name: "sub-1",
-		ID:   uuid.New(),
-		Source: Topic{
-			Topic:      topic,
-			JMESFilter: "",
-		},
-		Config: Config{
-			BatchSize: 1,
-		},
-		Destination: dest,
-	}.WithLogger(logger)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	s := NewSubscription("sub-1", uuid.New(), fmt.Sprintf("%s:%s", KafkaHost, KafkaPort)).
+		WithDestination(dest).
+		WithTopic(topic).
+		WithConfig(Config{BatchSize: 1}).
+		WithLogger(logger)
+	TestEventListener{t}.ListenAndLog(&s)
+	err := s.Start(ctx)
 	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	go s.Consume(ctx)
 
 	key := uuid.NewString()

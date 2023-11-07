@@ -14,20 +14,44 @@ type Subscription struct {
 	Name        string    `json:"name"`
 	ID          uuid.UUID `json:"id"`
 	Destination Destination
-	Source      Topic  `json:"source"`
+	Topic       string `json:"topic"`
 	Config      Config `json:"config"`
 
 	// Runtime elements
 	consumer *kafka.Consumer
 	logger   *slog.Logger
+	emitter  Emitter
 }
 
-func NewSubscription() Subscription {
-	return Subscription{logger: slog.Default()}
+func NewSubscription(name string, id uuid.UUID, kafkaServers string) Subscription {
+	return Subscription{
+		Name: name,
+		ID:   id,
+		Config: Config{
+			BatchSize:    50,
+			KafkaServers: kafkaServers,
+		},
+		logger: slog.Default(),
+	}
 }
 
-func (s Subscription) WithLogger(logger *slog.Logger) Subscription {
-	s.logger = logger
+func (s Subscription) WithLogger(l *slog.Logger) Subscription {
+	s.logger = l
+	return s
+}
+
+func (s Subscription) WithDestination(d Destination) Subscription {
+	s.Destination = d
+	return s
+}
+
+func (s Subscription) WithTopic(t string) Subscription {
+	s.Topic = t
+	return s
+}
+
+func (s Subscription) WithConfig(c Config) Subscription {
+	s.Config = c
 	return s
 }
 
@@ -35,10 +59,14 @@ func (s Subscription) GroupID() string {
 	return fmt.Sprintf("webhookd-%s", s.ID)
 }
 
-func (s *Subscription) Start(kafkaServers string) error {
+func (s Subscription) EventHook() *Emitter {
+	return &s.emitter
+}
+
+func (s *Subscription) Start(ctx context.Context) error {
 	var err error
 	s.consumer, err = kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers": kafkaServers,
+		"bootstrap.servers": s.Config.KafkaServers,
 		// Avoid connecting to IPv6 brokers:
 		// This is needed for the ErrAllBrokersDown show-case below
 		// when using localhost brokers on OSX, since the OSX resolver
@@ -61,23 +89,29 @@ func (s *Subscription) Start(kafkaServers string) error {
 	if err != nil {
 		return err
 	}
-	s.logger.Info("start consumer", slog.String("bootstrap.servers", kafkaServers), slog.String("consumer_id", s.ID.String()), slog.String("group_id", s.GroupID()), slog.String("topic", s.Source.Topic))
-	return s.consumer.SubscribeTopics([]string{s.Source.Topic}, nil)
+	err = s.consumer.SubscribeTopics([]string{s.Topic}, nil)
+	if err != nil {
+		return err
+	}
+	//s.logger.Info("start consumer", slog.String("bootstrap.servers", kafkaServers), slog.String("consumer_id", s.ID.String()), slog.String("group_id", s.GroupID()), slog.String("topic", s.Source.Topic))
+	s.emitter.Emit(Event{SubscriptionID: s.ID, Type: ConsumerCreated, CreatedAt: time.Now()})
+	return nil
 }
 
 func (s *Subscription) Consume(ctx context.Context) {
-	s.logger.Info("consume loop started", slog.String("consumer_id", s.ID.String()))
-	defer s.logger.Info("consume loop finished", slog.String("consumer_id", s.ID.String()))
+	// s.logger.Info("consume loop started", slog.String("consumer_id", s.ID.String()))
+	s.emitter.Emit(Event{SubscriptionID: s.ID, Type: ConsumerStarted, CreatedAt: time.Now()})
+	defer s.emitter.Emit(Event{SubscriptionID: s.ID, Type: ConsumerStopped, CreatedAt: time.Now()})
+
+	// defer s.logger.Info("consume loop finished", slog.String("consumer_id", s.ID.String()))
 
 	batch := make([]*kafka.Message, 0)
 	run := true
-	for run == true {
+	for run {
 		select {
 		case <-ctx.Done():
-			s.logger.Info("consume loop terminating", slog.String("consumer_id", s.ID.String()))
 			return
 		default:
-			// fmt.Printf("Webhook consumer %+v\n", s.consumer)
 			ev := s.consumer.Poll(100)
 			if ev == nil {
 				continue
@@ -85,7 +119,7 @@ func (s *Subscription) Consume(ctx context.Context) {
 
 			switch e := ev.(type) {
 			case *kafka.Message:
-				s.logger.Info("received msg", slog.String("consumer_id", s.ID.String()), slog.String("topic", *e.TopicPartition.Topic), slog.String("key", string(e.Key)))
+				s.emitter.Emit(Event{SubscriptionID: s.ID, Type: MessageReceived, CreatedAt: time.Now()})
 				batch = append(batch, e)
 				if len(batch) < s.Config.BatchSize {
 					continue
@@ -93,13 +127,13 @@ func (s *Subscription) Consume(ctx context.Context) {
 				err := s.SendTransactionally(ctx, batch)
 				if err != nil {
 					run = false
-					s.logger.Info("consumer stopping, send to destination failed", slog.Any("error", err))
+					s.emitter.Emit(Event{SubscriptionID: s.ID, Type: BatchSentError, CreatedAt: time.Now(), Error: err})
+
 				} else {
-					s.logger.Info("consumer committing offsets")
 					_, err := s.consumer.CommitMessage(e)
 					if err != nil {
 						run = false
-						s.logger.Info("consumer stopping, unable to store offset", slog.Any("error", err))
+						s.emitter.Emit(Event{SubscriptionID: s.ID, Type: BatchCommitError, CreatedAt: time.Now(), Error: err})
 					}
 				}
 			case kafka.Error:
@@ -110,14 +144,17 @@ func (s *Subscription) Consume(ctx context.Context) {
 				// the application if all brokers are down.
 				if e.Code() == kafka.ErrAllBrokersDown {
 					run = false
-					s.logger.Info("consumer existing, all brokers down", slog.Any("kafka_error", ev.(kafka.Error)))
+					s.emitter.Emit(Event{SubscriptionID: s.ID, Type: KafkaOffline, CreatedAt: time.Now(), Error: ev.(kafka.Error)})
 				} else {
-					s.logger.Debug("ignore", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_error", ev.(kafka.Error)))
-
+					if s.logger.Enabled(ctx, slog.LevelDebug) {
+						s.logger.Debug("kafka_error ignored", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_error", ev.(kafka.Error)))
+					}
 				}
 
 			default:
-				s.logger.Debug("ignore kafka event", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_event", ev.(kafka.Error)))
+				if s.logger.Enabled(ctx, slog.LevelDebug) {
+					s.logger.Debug("kafka_event ignored", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_error", ev.(kafka.Error)))
+				}
 			}
 		}
 	}
@@ -133,12 +170,10 @@ func (s *Subscription) SendTransactionally(ctx context.Context, msgs []*kafka.Me
 			return nil
 		default:
 			if s.Destination.Send(msgs) {
-				// TODO Emit event - Send succesfull
-				s.logger.Info("consumer sent batch ok", slog.String("consumer_id", s.ID.String()))
+				s.emitter.Emit(Event{SubscriptionID: s.ID, Type: BatchSentOK, CreatedAt: time.Now()})
 				return nil
 			}
-			// TODO Emit event - Send failed
-			slog.Info("consumer sent batch failed, retrying", slog.String("consumer_id", s.ID.String()))
+			s.emitter.Emit(Event{SubscriptionID: s.ID, Type: BatchSentError, CreatedAt: time.Now()})
 			time.Sleep(2 * time.Second)
 		}
 	}

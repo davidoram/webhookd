@@ -1,6 +1,7 @@
 # webhookd
 
 https://github.com/confluentinc/confluent-kafka-go/tree/v1.4.0
+https://github.com/golang/vscode-go/wiki/settings#gotestenvvars
 
 Provides the following functions:
 

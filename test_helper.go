@@ -45,3 +45,22 @@ func (wh *BufferDestination) AssertMsgCount(count int) {
 func (wh *BufferDestination) AssertBatchCount(count int) {
 	assert.Equal(wh.t, count, len(wh.Batches), "Batch count mismatch")
 }
+
+type TestEventListener struct {
+	T *testing.T
+}
+
+func (tel TestEventListener) ListenAndLog(s *Subscription) {
+	events := s.EventHook().AddListener()
+	go func() {
+		for {
+			select {
+			case event, ok := <-events:
+				if !ok {
+					return
+				}
+				tel.T.Logf("event: %s", event)
+			}
+		}
+	}()
+}
