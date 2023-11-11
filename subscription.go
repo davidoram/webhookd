@@ -14,7 +14,8 @@ type Subscription struct {
 	Name        string    `json:"name"`
 	ID          uuid.UUID `json:"id"`
 	Destination Destination
-	Source      Source `json:"source"`
+	Topic       Topic  `json:"source"`
+	Filter      Filter `json:"filter"`
 	Config      Config `json:"config"`
 
 	// Runtime elements
@@ -61,8 +62,8 @@ func (s *Subscription) Start(kafkaServers string) error {
 	if err != nil {
 		return err
 	}
-	s.logger.Info("start consumer", slog.String("bootstrap.servers", kafkaServers), slog.String("consumer_id", s.ID.String()), slog.String("group_id", s.GroupID()), slog.String("topic", s.Source.Topic))
-	return s.consumer.SubscribeTopics([]string{s.Source.Topic}, nil)
+	s.logger.Info("start consumer", slog.String("bootstrap.servers", kafkaServers), slog.String("consumer_id", s.ID.String()), slog.String("group_id", s.GroupID()), slog.String("topic", s.Topic.Topic))
+	return s.consumer.SubscribeTopics([]string{s.Topic.Topic}, nil)
 }
 
 func (s *Subscription) Consume(ctx context.Context) {

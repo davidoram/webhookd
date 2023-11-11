@@ -71,9 +71,8 @@ func TestSubscription(t *testing.T) {
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
-		Source: Source{
-			Topic:      topic,
-			JMESFilter: "",
+		Topic: Topic{
+			Topic: topic,
 		},
 		Config: Config{
 			BatchSize: 1,

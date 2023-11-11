@@ -12,11 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type Source struct {
-	Topic      string `json:"kind"`
-	JMESFilter string `json:"jmes_filter"`
-}
-
 type Config struct {
 	BatchSize int `json:"batch_size"`
 }
@@ -43,9 +38,8 @@ func main() {
 	subscription.Name = "test"
 	subscription.ID = uuid.New()
 	subscription.Destination = NewWebhook("http://localhost:8080/1/EventNotifications")
-	subscription.Source = Source{
-		Topic:      "topic-1",
-		JMESFilter: "",
+	subscription.Topic = Topic{
+		Topic: "topic-1",
 	}
 	subscription.Config = Config{
 		BatchSize: 10,
