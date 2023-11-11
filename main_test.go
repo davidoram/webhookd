@@ -79,6 +79,7 @@ func TestSubscription(t *testing.T) {
 		},
 		Destination: dest,
 	}.WithLogger(logger)
+	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
 	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
 	require.NoError(t, err)
@@ -120,10 +121,10 @@ func TestMultipleBatches(t *testing.T) {
 		},
 		Config: Config{
 			BatchSize: batchSize,
-			MaxWait:   time.Millisecond * 10,
 		},
 		Destination: dest,
 	}.WithLogger(logger)
+	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
 	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
 	require.NoError(t, err)
@@ -207,7 +208,7 @@ func sendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) 
 	if m.TopicPartition.Error != nil {
 		t.Fatalf("message send failed! error: %v", msg.TopicPartition.Error)
 	}
-	t.Logf("message sent ok, topic: %s, key: %s", topic, key)
+	// t.Logf("message sent ok, topic: %s, key: %s", topic, key)
 	close(deliveryChan)
 }
 

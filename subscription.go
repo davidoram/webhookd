@@ -73,7 +73,7 @@ func (s *Subscription) Consume(ctx context.Context) {
 	batch := make([]*kafka.Message, 0)
 	run := true
 
-	pushTicker := time.NewTicker(s.Config.MaxWait)
+	pushTicker := time.NewTicker(s.Config.maxWait)
 	for run == true {
 		select {
 		case <-ctx.Done():
@@ -97,7 +97,7 @@ func (s *Subscription) Consume(ctx context.Context) {
 
 			switch e := ev.(type) {
 			case *kafka.Message:
-				s.logger.Info("received msg", slog.String("consumer_id", s.ID.String()), slog.String("topic", *e.TopicPartition.Topic), slog.String("key", string(e.Key)))
+				// s.logger.Debug("received msg", slog.String("consumer_id", s.ID.String()), slog.String("topic", *e.TopicPartition.Topic), slog.String("key", string(e.Key)))
 				batch = append(batch, e)
 				if len(batch) < s.Config.BatchSize {
 					continue
