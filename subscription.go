@@ -72,11 +72,22 @@ func (s *Subscription) Consume(ctx context.Context) {
 
 	batch := make([]*kafka.Message, 0)
 	run := true
+
+	pushTicker := time.NewTicker(s.Config.MaxWait)
 	for run == true {
 		select {
 		case <-ctx.Done():
 			s.logger.Info("consume loop terminating", slog.String("consumer_id", s.ID.String()))
 			return
+		case <-pushTicker.C:
+			if len(batch) > 0 {
+				var err error
+				err, run = s.sendBatch(ctx, batch)
+				if err == nil {
+					// Reset batch
+					batch = batch[:0]
+				}
+			}
 		default:
 			// fmt.Printf("Webhook consumer %+v\n", s.consumer)
 			ev := s.consumer.Poll(100)
@@ -91,17 +102,11 @@ func (s *Subscription) Consume(ctx context.Context) {
 				if len(batch) < s.Config.BatchSize {
 					continue
 				}
-				err := s.SendTransactionally(ctx, batch)
-				if err != nil {
-					run = false
-					s.logger.Info("consumer stopping, send to destination failed", slog.Any("error", err))
-				} else {
-					s.logger.Info("consumer committing offsets")
-					_, err := s.consumer.CommitMessage(e)
-					if err != nil {
-						run = false
-						s.logger.Info("consumer stopping, unable to store offset", slog.Any("error", err))
-					}
+				var err error
+				err, run = s.sendBatch(ctx, batch)
+				if err == nil {
+					// Reset batch
+					batch = batch[:0]
 				}
 			case kafka.Error:
 				// Errors should generally be considered
@@ -122,6 +127,28 @@ func (s *Subscription) Consume(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// sendBatch sends a batch of messages to the destination and commits the offset, if it returns an error
+// caller should check the run flag to see if the consumer should continue
+func (s *Subscription) sendBatch(ctx context.Context, batch []*kafka.Message) (error, bool) {
+	run := true
+	err := s.SendTransactionally(ctx, batch)
+	if err != nil {
+		run = false
+		s.logger.Info("consumer stopping, send to destination failed", slog.Any("error", err))
+	} else {
+		for _, msg := range batch {
+			if _, err = s.consumer.CommitMessage(msg); err != nil {
+				break
+			}
+		}
+		if err != nil {
+			run = false
+			s.logger.Info("consumer stopping, unable to store offset", slog.Any("error", err))
+		}
+	}
+	return err, run
 }
 
 func (s *Subscription) SendTransactionally(ctx context.Context, msgs []*kafka.Message) error {

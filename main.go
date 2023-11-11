@@ -8,12 +8,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 type Config struct {
-	BatchSize int `json:"batch_size"`
+	BatchSize int           `json:"batch_size"`
+	MaxWait   time.Duration `json:"max_wait"` // Maximum time to wait for a batch to fill up
 }
 
 type Options struct {
@@ -43,6 +45,7 @@ func main() {
 	}
 	subscription.Config = Config{
 		BatchSize: 10,
+		MaxWait:   time.Second * 10,
 	}
 
 	subscriptions := []Subscription{subscription}
