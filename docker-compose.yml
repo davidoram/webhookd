@@ -1,0 +1,21 @@
+# docker-compose.yml
+version: '3'
+services:
+
+  # When we run kafka with webhookd also running inside docker,
+  # it needs to advertise its hostname as 'kafka' so that the 'webhookd' app can find it.
+  #
+  # When we run kafka with unit tests running outside docker,
+  # it needs to advertise its hostname as 'localhost' so that tests running outside of docker can find it.
+  #
+  # This is controlled by setting the KAFKA_ADVERTISED_HOST_NAME.
+  #
+  # https://www.confluent.io/blog/kafka-client-cannot-connect-to-broker-on-aws-on-docker-etc/
+  kafka:
+    image: davidoram/kafka:0.10.0.1
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: ${KAFKA_ADVERTISED_HOST_NAME:-localhost}
+    ports:
+      - "9092:9092"
+      - "9075:9075"
+      - "2081:2081"
