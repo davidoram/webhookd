@@ -1,13 +1,24 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"io"
+
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/stretchr/testify/assert"
+)
+
+const (
+	KafkaHost     = "localhost"
+	KafkaPort     = "9092"
+	ZooKeeperPort = "2081"
 )
 
 type TestDestination struct {
@@ -103,4 +114,76 @@ func testConnection(host string, port string) bool {
 	}
 	conn.Close()
 	return true
+}
+
+type webhookTestServer struct {
+	Server   *httptest.Server
+	t        *testing.T
+	Messages []Message
+}
+
+// testWebserver creates a httptest.Server that has one endpoint /messages that will accept a POST request
+// containing a list of messages in the format:
+//
+//	{
+//	  "messages":
+//	  [
+//	    {
+//	      "key": "key1",
+//	      "value": "value1",
+//	      "topic": "topic1"
+//	      "headers": [ { "key": "header1", "value": "header1value" } ]
+//	    },
+//	    ...
+//	   ]
+//	}
+//
+// The webserver will return a 200 OK and save the messsages in memory, so they can be inspected
+// by the test.  The function returns the httptest.Server object.
+// Pass the done channel to the function, and it will close the channel when the expected number of
+// messages have been received.
+func testWebserver(t *testing.T, expectedMessages int, done chan bool) *webhookTestServer {
+	testServer := webhookTestServer{t: t, Messages: make([]Message, 0)}
+	// Create a test webserver
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/messages" {
+			t.Fatalf("unexpected request path %s", r.URL.Path)
+		}
+		if r.Method != "POST" {
+			t.Fatalf("unexpected request method %s", r.Method)
+		}
+		// Read the request body
+		body, err := io.ReadAll(io.Reader(r.Body))
+		assert.NoError(t, err, "reading request body")
+		// Unmarshal the body into a list of messages
+		var msgBatch MessageBatch
+		err = json.Unmarshal(body, &msgBatch)
+		assert.NoError(t, err, "unmarshalling request body")
+		// Save the messages to a list
+		testServer.Messages = append(testServer.Messages, msgBatch.Messages...)
+		t.Logf("received %d messages", len(msgBatch.Messages))
+		w.WriteHeader(http.StatusOK)
+		if len(testServer.Messages) >= expectedMessages {
+			t.Logf("sending done on channel")
+			done <- true
+		}
+	}))
+	testServer.Server = ts
+	return &testServer
+}
+
+func (ts *webhookTestServer) Close() {
+	ts.Server.Close()
+}
+
+func (ts *webhookTestServer) MesssageMap() map[string]string {
+	msg := make(map[string]string)
+	for _, m := range ts.Messages {
+		msg[m.Key] = m.Value
+	}
+	return msg
+}
+
+func FixedRetrier(dur time.Duration) Retrier {
+	return func(retries, maxretries int) time.Duration { return dur }
 }
