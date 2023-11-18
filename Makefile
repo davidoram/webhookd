@@ -8,4 +8,4 @@ build:
 	mkdir -p build 
 	CGO_ENABLED=1 \
     CGO_LDFLAGS="-L/usr/local" \
-	go build -o build/webhookd -tags=dynamic main.go 
+	go build -o build/webhookd -tags=dynamic *.go 
