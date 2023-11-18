@@ -20,6 +20,7 @@ func TestExponentialRetrier(t *testing.T) {
 	assert.Equal(t, 80*time.Second, ExponentialRetrier(3, 5))
 	assert.Equal(t, 160*time.Second, ExponentialRetrier(4, 5))
 	assert.Equal(t, 320*time.Second, ExponentialRetrier(5, 5))
+	assert.Equal(t, 327680*time.Second, ExponentialRetrier(15, 15))
 }
 
 func TestFixedRetrier(t *testing.T) {
