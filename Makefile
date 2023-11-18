@@ -9,14 +9,14 @@ test:
 install-librdkafka:
 	# install librdkafka
 	echo "Building librdkafka from source"
-    cd /tmp
-    git clone https://github.com/edenhill/librdkafka.git -b v${LIBRDKAFKA_VER}
-    cd librdkafka
-    ./configure --install-deps
-    make
-    sudo make install
-    cd ..
-    rm -rf librdkafka
+	cd /tmp
+	git clone https://github.com/edenhill/librdkafka.git -b v${LIBRDKAFKA_VER}
+	cd librdkafka
+	./configure --install-deps
+	make
+	sudo make install
+	cd ..
+	rm -rf librdkafka
 
 build:
 	mkdir -p build 
