@@ -30,6 +30,9 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
 
+    - name: Install-deps
+      run: make install-librdkafka
+  
     - name: Build
       run: make build
           
