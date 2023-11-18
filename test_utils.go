@@ -116,10 +116,43 @@ func testConnection(host string, port string) bool {
 	return true
 }
 
+type ResponseOverrider interface {
+	// Return true if the response should be overridden, and the new response code and message
+	// return false to let the server handle the request
+	OverrideResponse(*http.Request) (bool, int, string)
+}
+
+type DefaultResponseOverrider struct{}
+
+func (d DefaultResponseOverrider) OverrideResponse(*http.Request) (bool, int, string) {
+	return false, 0, ""
+}
+
+type FailEveryNthResponse struct {
+	count      int
+	N          int
+	StatusCode int
+	Message    string
+}
+
+func (d *FailEveryNthResponse) OverrideResponse(*http.Request) (bool, int, string) {
+	d.count++
+	if d.count%d.N == 0 {
+		return true, d.StatusCode, d.Message
+	}
+	return false, 0, ""
+}
+
+// webhookTestServer is a test webserver that can be used to receive webhook messages.
+// It has a Messages field that can be used to inspect the messages received by the server.
 type webhookTestServer struct {
 	Server   *httptest.Server
 	t        *testing.T
 	Messages []Message
+	// ResponseOverrider is a function that can be used to override the response code returned by the server.
+	// To have the server return a 500 Internal Server Error, use: func(*http.Request) (bool, int) { return true, 500, "Internal Server Error" }
+	// To have the server return a 200 OK, use: func(*http.Request) (bool, int) { return true, 0, "" }
+	ResponseOverrider ResponseOverrider
 }
 
 // testWebserver creates a httptest.Server that has one endpoint /messages that will accept a POST request
@@ -147,28 +180,39 @@ func testWebserver(t *testing.T, expectedMessages int, done chan bool) *webhookT
 	// Create a test webserver
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/messages" {
-			t.Fatalf("unexpected request path %s", r.URL.Path)
+			t.Fatalf("test webhook unexpected request path %s", r.URL.Path)
 		}
 		if r.Method != "POST" {
-			t.Fatalf("unexpected request method %s", r.Method)
+			t.Fatalf("test webhook unexpected request method %s", r.Method)
 		}
+		override, status, b := testServer.ResponseOverrider.OverrideResponse(r)
+		if override {
+			t.Logf("test webhook overriding response with %d", status)
+			w.WriteHeader(status)
+			w.Write([]byte(b))
+			return
+		}
+		t.Logf("test webhook got valid request %s", r.URL.Path)
 		// Read the request body
 		body, err := io.ReadAll(io.Reader(r.Body))
-		assert.NoError(t, err, "reading request body")
+		assert.NoError(t, err, "test webhook reading request body")
 		// Unmarshal the body into a list of messages
 		var msgBatch MessageBatch
 		err = json.Unmarshal(body, &msgBatch)
-		assert.NoError(t, err, "unmarshalling request body")
+		assert.NoErrorf(t, err, "test webhook unmarshalling request body: '%s'", string(body))
 		// Save the messages to a list
 		testServer.Messages = append(testServer.Messages, msgBatch.Messages...)
-		t.Logf("received %d messages", len(msgBatch.Messages))
+		t.Logf("test webhook received %d messages", len(msgBatch.Messages))
 		w.WriteHeader(http.StatusOK)
 		if len(testServer.Messages) >= expectedMessages {
-			t.Logf("sending done on channel")
+			t.Logf("test webhook sending done on channel")
 			done <- true
 		}
 	}))
 	testServer.Server = ts
+	// By default, let the server handle all requests and return a 200 OK
+	testServer.ResponseOverrider = DefaultResponseOverrider{}
+
 	return &testServer
 }
 

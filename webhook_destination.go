@@ -37,11 +37,11 @@ func (wh WebhookDestination) Send(msgs []*kafka.Message) bool {
 		log.Printf("Error encoding JSON: %v", err)
 		return false
 	}
-	bbuf := bytes.NewBuffer(buf)
+
 	// Start a retry loop with exponential backoff
 	for i := 0; i < wh.MaxRetries; i++ {
 		// Send the batch to the webhook destination
-		resp, err := http.Post(wh.URL, "application/json", bbuf)
+		resp, err := http.Post(wh.URL, "application/json", bytes.NewBuffer(buf))
 		if err != nil {
 			log.Printf("Error sending batch to webhook destination: %v", err)
 			time.Sleep(time.Duration(math.Pow(2, float64(i))) * time.Second)
@@ -49,8 +49,9 @@ func (wh WebhookDestination) Send(msgs []*kafka.Message) bool {
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("Error sending batch to webhook destination: %v", resp.Status)
-			time.Sleep(time.Duration(math.Pow(2, float64(i))) * time.Second)
+			delay := time.Duration(math.Pow(2, float64(i))) * time.Second
+			log.Printf("Webhook returned status code %s, delaying for %s", resp.Status, delay.String())
+			time.Sleep(delay)
 			continue
 		}
 		// If we get here, the batch was sent successfully
