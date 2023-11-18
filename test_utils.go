@@ -143,9 +143,9 @@ func (d *FailEveryNthResponse) OverrideResponse(*http.Request) (bool, int, strin
 	return false, 0, ""
 }
 
-// webhookTestServer is a test webserver that can be used to receive webhook messages.
+// WebhookTestServer is a test webserver that can be used to receive webhook messages.
 // It has a Messages field that can be used to inspect the messages received by the server.
-type webhookTestServer struct {
+type WebhookTestServer struct {
 	Server   *httptest.Server
 	t        *testing.T
 	Messages []Message
@@ -153,6 +153,10 @@ type webhookTestServer struct {
 	// To have the server return a 500 Internal Server Error, use: func(*http.Request) (bool, int) { return true, 500, "Internal Server Error" }
 	// To have the server return a 200 OK, use: func(*http.Request) (bool, int) { return true, 0, "" }
 	ResponseOverrider ResponseOverrider
+
+	// Set CheckAuthHeader to true to check that the Authorization header is set to the value in AuthHeaderVale
+	CheckAuthHeader bool
+	AuthHeaderValue string
 }
 
 // testWebserver creates a httptest.Server that has one endpoint /messages that will accept a POST request
@@ -175,8 +179,8 @@ type webhookTestServer struct {
 // by the test.  The function returns the httptest.Server object.
 // Pass the done channel to the function, and it will close the channel when the expected number of
 // messages have been received.
-func testWebserver(t *testing.T, expectedMessages int, done chan bool) *webhookTestServer {
-	testServer := webhookTestServer{t: t, Messages: make([]Message, 0)}
+func testWebserver(t *testing.T, expectedMessages int, done chan bool) *WebhookTestServer {
+	testServer := WebhookTestServer{t: t, Messages: make([]Message, 0)}
 	// Create a test webserver
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/messages" {
@@ -191,6 +195,14 @@ func testWebserver(t *testing.T, expectedMessages int, done chan bool) *webhookT
 			w.WriteHeader(status)
 			w.Write([]byte(b))
 			return
+		}
+		if testServer.CheckAuthHeader {
+			expected := fmt.Sprintf("Bearer %s", testServer.AuthHeaderValue)
+			if authHeader := r.Header.Get("Authorization"); authHeader != expected {
+				t.Logf("test webhook got invalid auth header '%s', expected '%s'", authHeader, expected)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 		}
 		t.Logf("test webhook got valid request %s", r.URL.Path)
 		// Read the request body
@@ -216,11 +228,11 @@ func testWebserver(t *testing.T, expectedMessages int, done chan bool) *webhookT
 	return &testServer
 }
 
-func (ts *webhookTestServer) Close() {
+func (ts *WebhookTestServer) Close() {
 	ts.Server.Close()
 }
 
-func (ts *webhookTestServer) MesssageMap() map[string]string {
+func (ts *WebhookTestServer) MesssageMap() map[string]string {
 	msg := make(map[string]string)
 	for _, m := range ts.Messages {
 		msg[m.Key] = m.Value

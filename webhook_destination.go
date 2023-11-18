@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"log"
-	"math"
 	"net/http"
 	"time"
 
@@ -15,10 +14,18 @@ type WebhookDestination struct {
 	URL        string
 	MaxRetries int
 	Retry      Retrier
+	client     *http.Client
 }
 
+// NewWebhook creates a new WebhookDestination using the given URL, and a default retry policy
+// it also uses the default http.Client
 func NewWebhook(url string) WebhookDestination {
-	return WebhookDestination{URL: url, MaxRetries: 5, Retry: ExponentialRetrier}
+	return WebhookDestination{URL: url, MaxRetries: 5, Retry: ExponentialRetrier, client: http.DefaultClient}
+}
+
+func (wh WebhookDestination) WithClient(client *http.Client) WebhookDestination {
+	wh.client = client
+	return wh
 }
 
 // Send messages and return if the desination has accepted the messages, and is ready for the next batch
@@ -35,15 +42,16 @@ func (wh WebhookDestination) Send(msgs []*kafka.Message) bool {
 	// Start a retry loop with exponential backoff
 	for i := 0; i < wh.MaxRetries; i++ {
 		// Send the batch to the webhook destination
-		resp, err := http.Post(wh.URL, "application/json", bytes.NewBuffer(buf))
+		resp, err := wh.client.Post(wh.URL, "application/json", bytes.NewBuffer(buf))
 		if err != nil {
+			delay := wh.Retry(i, wh.MaxRetries)
 			log.Printf("Error sending batch to webhook destination: %v", err)
-			time.Sleep(time.Duration(math.Pow(2, float64(i))) * time.Second)
+			time.Sleep(delay)
 			continue
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			delay := time.Duration(math.Pow(2, float64(i))) * time.Second
+			delay := wh.Retry(i, wh.MaxRetries)
 			log.Printf("Webhook returned status code %s, delaying for %s", resp.Status, delay.String())
 			time.Sleep(delay)
 			continue
