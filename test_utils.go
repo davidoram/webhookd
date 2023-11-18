@@ -227,7 +227,3 @@ func (ts *webhookTestServer) MesssageMap() map[string]string {
 	}
 	return msg
 }
-
-func FixedRetrier(dur time.Duration) Retrier {
-	return func(retries, maxretries int) time.Duration { return dur }
-}
