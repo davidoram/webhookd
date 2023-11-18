@@ -34,7 +34,7 @@ jobs:
       run: |
         sudo apt-get update -qq
         sudo apt-get install -qq -y make git curl gcc g++ ca-certificates
-        git clone https://github.com/edenhill/librdkafka.git -b v${LIBRDKAFKA_VER}
+        git clone https://github.com/edenhill/librdkafka.git -b v1.4.4
         cd librdkafka
         ./configure --install-deps
         make
