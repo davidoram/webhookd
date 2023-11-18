@@ -1,0 +1,53 @@
+name: Test
+
+on:
+  push:
+    branches:
+    - main
+    - features/**
+    - dependabot/**
+  pull_request:
+    branches:
+    - main
+
+jobs:
+  docker:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    strategy:
+        matrix:
+          go-version: [ '1.21' ]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Start containers
+      run: docker-compose -f "docker-compose.yml" up -d --build
+
+    - name: Setup Go ${{ matrix.go-version }}
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Install-deps
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -qq -y make git curl gcc g++ ca-certificates
+        git clone https://github.com/edenhill/librdkafka.git -b v1.4.4
+        cd librdkafka
+        ./configure --install-deps --prefix /usr
+        make
+        sudo make install
+        cd ..
+        rm -rf librdkafka
+  
+    - name: Build
+      run: make build
+          
+    - name: Run tests
+      run: make test
+
+    - name: Stop containers
+      if: always()
+      run: docker-compose -f "docker-compose.yml" down

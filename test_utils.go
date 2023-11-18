@@ -1,13 +1,24 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"io"
+
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/stretchr/testify/assert"
+)
+
+const (
+	KafkaHost     = "localhost"
+	KafkaPort     = "9092"
+	ZooKeeperPort = "2081"
 )
 
 type TestDestination struct {
@@ -103,4 +114,120 @@ func testConnection(host string, port string) bool {
 	}
 	conn.Close()
 	return true
+}
+
+type ResponseOverrider interface {
+	// Return true if the response should be overridden, and the new response code and message
+	// return false to let the server handle the request
+	OverrideResponse(*http.Request) (bool, int, string)
+}
+
+type DefaultResponseOverrider struct{}
+
+func (d DefaultResponseOverrider) OverrideResponse(*http.Request) (bool, int, string) {
+	return false, 0, ""
+}
+
+type FailEveryNthResponse struct {
+	count      int
+	N          int
+	StatusCode int
+	Message    string
+}
+
+func (d *FailEveryNthResponse) OverrideResponse(*http.Request) (bool, int, string) {
+	d.count++
+	if d.count%d.N == 0 {
+		return true, d.StatusCode, d.Message
+	}
+	return false, 0, ""
+}
+
+// webhookTestServer is a test webserver that can be used to receive webhook messages.
+// It has a Messages field that can be used to inspect the messages received by the server.
+type webhookTestServer struct {
+	Server   *httptest.Server
+	t        *testing.T
+	Messages []Message
+	// ResponseOverrider is a function that can be used to override the response code returned by the server.
+	// To have the server return a 500 Internal Server Error, use: func(*http.Request) (bool, int) { return true, 500, "Internal Server Error" }
+	// To have the server return a 200 OK, use: func(*http.Request) (bool, int) { return true, 0, "" }
+	ResponseOverrider ResponseOverrider
+}
+
+// testWebserver creates a httptest.Server that has one endpoint /messages that will accept a POST request
+// containing a list of messages in the format:
+//
+//	{
+//	  "messages":
+//	  [
+//	    {
+//	      "key": "key1",
+//	      "value": "value1",
+//	      "topic": "topic1"
+//	      "headers": [ { "key": "header1", "value": "header1value" } ]
+//	    },
+//	    ...
+//	   ]
+//	}
+//
+// The webserver will return a 200 OK and save the messsages in memory, so they can be inspected
+// by the test.  The function returns the httptest.Server object.
+// Pass the done channel to the function, and it will close the channel when the expected number of
+// messages have been received.
+func testWebserver(t *testing.T, expectedMessages int, done chan bool) *webhookTestServer {
+	testServer := webhookTestServer{t: t, Messages: make([]Message, 0)}
+	// Create a test webserver
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/messages" {
+			t.Fatalf("test webhook unexpected request path %s", r.URL.Path)
+		}
+		if r.Method != "POST" {
+			t.Fatalf("test webhook unexpected request method %s", r.Method)
+		}
+		override, status, b := testServer.ResponseOverrider.OverrideResponse(r)
+		if override {
+			t.Logf("test webhook overriding response with %d", status)
+			w.WriteHeader(status)
+			w.Write([]byte(b))
+			return
+		}
+		t.Logf("test webhook got valid request %s", r.URL.Path)
+		// Read the request body
+		body, err := io.ReadAll(io.Reader(r.Body))
+		assert.NoError(t, err, "test webhook reading request body")
+		// Unmarshal the body into a list of messages
+		var msgBatch MessageBatch
+		err = json.Unmarshal(body, &msgBatch)
+		assert.NoErrorf(t, err, "test webhook unmarshalling request body: '%s'", string(body))
+		// Save the messages to a list
+		testServer.Messages = append(testServer.Messages, msgBatch.Messages...)
+		t.Logf("test webhook received %d messages", len(msgBatch.Messages))
+		w.WriteHeader(http.StatusOK)
+		if len(testServer.Messages) >= expectedMessages {
+			t.Logf("test webhook sending done on channel")
+			done <- true
+		}
+	}))
+	testServer.Server = ts
+	// By default, let the server handle all requests and return a 200 OK
+	testServer.ResponseOverrider = DefaultResponseOverrider{}
+
+	return &testServer
+}
+
+func (ts *webhookTestServer) Close() {
+	ts.Server.Close()
+}
+
+func (ts *webhookTestServer) MesssageMap() map[string]string {
+	msg := make(map[string]string)
+	for _, m := range ts.Messages {
+		msg[m.Key] = m.Value
+	}
+	return msg
+}
+
+func FixedRetrier(dur time.Duration) Retrier {
+	return func(retries, maxretries int) time.Duration { return dur }
 }

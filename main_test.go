@@ -14,12 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	KafkaHost     = "localhost"
-	KafkaPort     = "9092"
-	ZooKeeperPort = "2081"
-)
-
 func TestKafkaRunning(t *testing.T) {
 	if !testConnection(KafkaHost, KafkaPort) {
 		t.Errorf("Can't connect to %s:%s - clients", KafkaHost, KafkaPort)
