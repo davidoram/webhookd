@@ -228,7 +228,7 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	// Don't make the test wait for retries
 	dest.Retry = FixedRetrier(time.Millisecond)
 	// Set the auth token
-	dest = dest.WithClient(NewAuthTokenClient(svr.AuthHeaderValue, time.Second*1))
+	dest = dest.WithClient(NewAuthTokenClient("wrong-auth-token", time.Millisecond*200))
 	dest.Retry = FixedRetrier(time.Millisecond)
 
 	// Setup the Subscription
@@ -246,6 +246,8 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 		},
 		Destination: dest,
 	}.WithLogger(logger)
+	tl := NewTestListener(t, SubscriptionEventBatchSentNACK, done)
+	s.AddListener(tl)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
 	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
@@ -264,9 +266,10 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 		sendMsgBlocking(t, producer, k, v, topic)
 	}
 
-	// Wait for all messages to be received
+	// Wait to get a callback saying the messages couldnt be sent
+
 	<-done
 
 	t.Logf("checking no messages received")
-	assert.Equal(t, sent, svr.MesssageMap())
+	assert.Equal(t, 0, len(svr.MesssageMap()))
 }

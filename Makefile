@@ -23,3 +23,8 @@ build:
 	CGO_ENABLED=1 \
     CGO_LDFLAGS="-L/usr/local" \
 	go build -o build/webhookd -tags=dynamic *.go 
+
+coverage:
+	mkdir -p build 
+	go test -tags=dynamic -cover -coverprofile=build/c.out
+	go tool cover -html="build/c.out"

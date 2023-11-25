@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -20,6 +21,25 @@ const (
 	KafkaPort     = "9092"
 	ZooKeeperPort = "2081"
 )
+
+type TestListener struct {
+	t       *testing.T
+	Events  []SubscriptionEvent
+	WaitFor SubscriptionEventType
+	Done    chan (bool)
+}
+
+func NewTestListener(t *testing.T, waitFor SubscriptionEventType, done chan (bool)) *TestListener {
+	return &TestListener{t: t, Events: make([]SubscriptionEvent, 0), WaitFor: waitFor, Done: done}
+}
+
+func (tl *TestListener) SubscriptionEvent(event SubscriptionEvent) {
+	tl.t.Logf("TestListener received event %s", event.Type)
+	tl.Events = append(tl.Events, event)
+	if tl.WaitFor == event.Type {
+		tl.Done <- true
+	}
+}
 
 type TestDestination struct {
 	t       *testing.T
@@ -43,16 +63,16 @@ func NewTestDest(t *testing.T) *TestDestination {
 	return &td
 }
 
-func (wh *TestDestination) Send(msgs []*kafka.Message) bool {
+func (wh *TestDestination) Send(ctx context.Context, msgs []*kafka.Message) error {
 	// Only save the messages if SendOK is true
 	if !wh.SendOK(wh, msgs) {
 		wh.t.Logf("TestDestination received batch %d with %d messages, ACK failed", len(wh.Batches), len(msgs))
-		return false
+		return fmt.Errorf("TestDestination NACK")
 	}
 	wh.t.Logf("TestDestination received batch %d with %d messages, ACK ok", len(wh.Batches), len(msgs))
 	wh.Events <- BatchEvent{Index: len(wh.Batches), Messages: msgs}
 	wh.Batches = append(wh.Batches, msgs)
-	return true
+	return nil
 }
 
 func testProducer(t *testing.T) *kafka.Producer {

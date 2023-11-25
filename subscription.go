@@ -8,6 +8,7 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 type Subscription struct {
@@ -19,9 +20,13 @@ type Subscription struct {
 	Config      Config `json:"config"`
 
 	// Runtime elements
-	consumer *kafka.Consumer
-	logger   *slog.Logger
+	consumer  *kafka.Consumer
+	logger    *slog.Logger
+	listeners []SubscriptionListener
 }
+
+var ErrSendFailed = errors.New("send transactionally failed")
+var ErrContextCancelled = errors.New("context cancelled")
 
 func NewSubscription() Subscription {
 	return Subscription{logger: slog.Default()}
@@ -30,6 +35,10 @@ func NewSubscription() Subscription {
 func (s Subscription) WithLogger(logger *slog.Logger) Subscription {
 	s.logger = logger
 	return s
+}
+
+func (s *Subscription) AddListener(l SubscriptionListener) {
+	s.listeners = append(s.listeners, l)
 }
 
 func (s Subscription) GroupID() string {
@@ -69,12 +78,14 @@ func (s *Subscription) Start(kafkaServers string) error {
 func (s *Subscription) Consume(ctx context.Context) {
 	s.logger.Info("consume loop started", slog.String("consumer_id", s.ID.String()))
 	defer s.logger.Info("consume loop finished", slog.String("consumer_id", s.ID.String()))
-
+	for l := range s.listeners {
+		s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventStart, Subscription: s})
+	}
 	batch := make([]*kafka.Message, 0)
 	run := true
 
 	pushTicker := time.NewTicker(s.Config.maxWait)
-	for run == true {
+	for run {
 		select {
 		case <-ctx.Done():
 			s.logger.Info("consume loop terminating", slog.String("consumer_id", s.ID.String()))
@@ -82,8 +93,10 @@ func (s *Subscription) Consume(ctx context.Context) {
 		case <-pushTicker.C:
 			if len(batch) > 0 {
 				var err error
-				err, run = s.sendBatch(ctx, batch)
-				if err == nil {
+				err = s.sendBatch(ctx, batch)
+				if err != nil {
+					run = false
+				} else {
 					// Reset batch
 					batch = batch[:0]
 				}
@@ -103,8 +116,10 @@ func (s *Subscription) Consume(ctx context.Context) {
 					continue
 				}
 				var err error
-				err, run = s.sendBatch(ctx, batch)
-				if err == nil {
+				err = s.sendBatch(ctx, batch)
+				if err != nil {
+					run = false
+				} else {
 					// Reset batch
 					batch = batch[:0]
 				}
@@ -119,7 +134,6 @@ func (s *Subscription) Consume(ctx context.Context) {
 					s.logger.Info("consumer existing, all brokers down", slog.Any("kafka_error", ev.(kafka.Error)))
 				} else {
 					s.logger.Debug("ignore", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_error", ev.(kafka.Error)))
-
 				}
 
 			default:
@@ -127,15 +141,20 @@ func (s *Subscription) Consume(ctx context.Context) {
 			}
 		}
 	}
+
+	for l := range s.listeners {
+		s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventStop, Subscription: s})
+	}
 }
 
 // sendBatch sends a batch of messages to the destination and commits the offset, if it returns an error
 // caller should check the run flag to see if the consumer should continue
-func (s *Subscription) sendBatch(ctx context.Context, batch []*kafka.Message) (error, bool) {
-	run := true
+func (s *Subscription) sendBatch(ctx context.Context, batch []*kafka.Message) error {
 	err := s.SendTransactionally(ctx, batch)
 	if err != nil {
-		run = false
+		for l := range s.listeners {
+			s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventError, Subscription: s, Error: err})
+		}
 		s.logger.Info("consumer stopping, send to destination failed", slog.Any("error", err))
 	} else {
 		for _, msg := range batch {
@@ -144,30 +163,33 @@ func (s *Subscription) sendBatch(ctx context.Context, batch []*kafka.Message) (e
 			}
 		}
 		if err != nil {
-			run = false
+			for l := range s.listeners {
+				s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventError, Subscription: s, Error: err})
+			}
 			s.logger.Info("consumer stopping, unable to store offset", slog.Any("error", err))
 		}
 	}
-	return err, run
+	return err
 }
 
+// SendTransactionally sends a batch of messages to the destination,
+// returns ErrSendFailed if the messages were not sent, because of a client side error
 func (s *Subscription) SendTransactionally(ctx context.Context, msgs []*kafka.Message) error {
-	// Add a Timeout to the context so we don't send forever
-	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
-	defer cancel()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-			if s.Destination.Send(msgs) {
-				// TODO Emit event - Send succesfull
-				s.logger.Info("consumer sent batch ok", slog.String("consumer_id", s.ID.String()))
-				return nil
+	select {
+	case <-ctx.Done():
+		return ErrContextCancelled
+	default:
+		err := s.Destination.Send(ctx, msgs)
+		if err == nil {
+			for l := range s.listeners {
+				s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventBatchSentACK, Subscription: s})
 			}
-			// TODO Emit event - Send failed
-			slog.Info("consumer sent batch failed, retrying", slog.String("consumer_id", s.ID.String()))
-			time.Sleep(2 * time.Second)
+			s.logger.Info("consumer sent batch ok", slog.String("consumer_id", s.ID.String()))
+			return nil
 		}
+		for l := range s.listeners {
+			s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventBatchSentNACK, Subscription: s, Error: err})
+		}
+		return err
 	}
 }
