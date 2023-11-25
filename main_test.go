@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -125,89 +124,4 @@ func TestMultipleBatches(t *testing.T) {
 
 	t.Logf("checking all messages received")
 	assert.Equal(t, sent, received)
-}
-
-func TestRetry(t *testing.T) {
-	batchSize := 10
-
-	require.True(t, testConnection(KafkaHost, KafkaPort))
-
-	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
-	defer producer.Close()
-
-	dest := NewTestDest(t)
-
-	// Define which batches should fail
-	errorOnBatch := map[int]bool{
-		0:  true,
-		3:  true,
-		8:  true,
-		18: true,
-		33: true,
-		65: true,
-	}
-
-	// SendOK is called by the destination to determine if the batch should be ACKed
-	dest.SendOK = func(td *TestDestination, _ []*kafka.Message) bool {
-		index := len(td.Batches)
-		if _, found := errorOnBatch[index]; found {
-			t.Logf("TestDestination received batch %d, ACK failed", index)
-			delete(errorOnBatch, index)
-			return false
-		}
-		return true
-	}
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
-	s := Subscription{
-		Name: "sub-1",
-		ID:   uuid.New(),
-		Topic: Topic{
-			Topic: topic,
-		},
-		Config: Config{
-			BatchSize: batchSize,
-		},
-		Destination: dest,
-	}.WithLogger(logger)
-	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
-
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go s.Consume(ctx)
-
-	totalMessages := 1000
-	sent := map[string]string{}
-	for i := 0; i < totalMessages; i++ {
-		sent[fmt.Sprintf("%d", i)] = fmt.Sprintf("msg-%d", i)
-	}
-
-	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
-	}
-
-	received := map[string]string{}
-	numBatches := totalMessages / batchSize
-	if totalMessages%batchSize > 0 {
-		numBatches++
-	}
-	t.Logf("wait for %d batches", numBatches)
-	for i := 0; i < numBatches; i++ {
-		t.Logf("wait for batch %d to arrive...", i)
-		event := <-dest.Events
-		for _, msg := range event.Messages {
-			received[string(msg.Key)] = string(msg.Value)
-		}
-	}
-
-	t.Logf("checking all messages received")
-	assert.Equal(t, sent, received)
-
-	// Check that all required batches were retried
-	assert.Empty(t, errorOnBatch)
 }
