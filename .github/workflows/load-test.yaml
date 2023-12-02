@@ -10,7 +10,8 @@ jobs:
     steps:
     - name: Check User Permissions
       id: check_permissions
-      run: echo "User: ${{ github.actor }}"
+      run: |
+        echo "User: ${{ github.actor }}"
 
     - name: Stop Workflow if No Write Access
       if: steps.check_permissions.outputs.user_permissions != 'write'
