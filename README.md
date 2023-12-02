@@ -178,6 +178,10 @@ Clients can get webhook status as follows:
             Filter: []JMESPath
             consumer: kafka.Consumer
         }
+        class KafkaConsumer{
+            
+        }
+        
         class Config{
             BatchSize: int
             maxWait: time.Duration
@@ -207,9 +211,10 @@ Clients can get webhook status as follows:
         }
         Subscription "1" o-- "1" Config : configuration
         Subscription "1" o-- "1" WebhookDestination : has-a
-        WebhookDestination --> Message : sends
+        WebhookDestination --> Message : sends-batches-of
         WebhookDestination o--  Retrier   : has-a
         Subscription  o-- SubscriptionListener : has-many
+        Subscription  --> KafkaConsumer : has-a
         SubscriptionEvent o-- Subscription: pointer-to
         SubscriptionListener --> SubscriptionEvent : sends
 
