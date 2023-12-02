@@ -165,4 +165,57 @@ Clients can get webhook status as follows:
 
 
 
+# Data structures
 
+
+```mermaid
+    classDiagram
+        direction RL
+        class Subscription {
+            ID: uuid
+            Name: string
+            Topic: string
+            Filter: []JMESPath
+            consumer: kafka.Consumer
+        }
+        class KafkaConsumer{
+            
+        }
+        
+        class Config{
+            BatchSize: int
+            maxWait: time.Duration
+        }
+        
+        class WebhookDestination{
+            URL: string
+            MaxRetries: int
+            client: http.Client
+            Send(context, []Message)
+        }
+        class Retrier {
+            func(retries, maxretries int)
+        }
+        class Message{
+            Topic: string
+            Key : string
+            Value : string
+            Headers : map[string]string
+        }
+        class SubscriptionListener {
+            SubscriptionEvent(event SubscriptionEvent)
+        }
+        class SubscriptionEvent {
+            Type: enum
+            Error: error
+        }
+        Subscription "1" o-- "1" Config : configuration
+        Subscription "1" o-- "1" WebhookDestination : has-a
+        WebhookDestination --> Message : sends-batches-of
+        WebhookDestination o--  Retrier   : has-a
+        Subscription  o-- SubscriptionListener : has-many
+        Subscription  --> KafkaConsumer : has-a
+        SubscriptionEvent o-- Subscription: pointer-to
+        SubscriptionListener --> SubscriptionEvent : sends
+
+```
