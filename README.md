@@ -219,3 +219,21 @@ Clients can get webhook status as follows:
         SubscriptionListener --> SubscriptionEvent : sends
 
 ```
+
+# Tests
+
+## Unit tests
+
+Unit tests run automatically when a Pull Request is updated, or merged.
+
+To run tests locally you can run:
+
+```
+docker compose up
+make test
+```
+
+## Load test
+
+Because load tests take a long time to run, and open source projects have [billing limits](https://docs.github.com/en/billing/managing-billing-for-github-actions/about-billing-for-github-actions), the load test action is triggered manually, by running the 'load-test' action manually from the 'Actions' tab in GitHub.
+
