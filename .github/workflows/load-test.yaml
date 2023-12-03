@@ -1,0 +1,24 @@
+name: LoadTest
+
+on: workflow_dispatch
+
+jobs:
+  check-permissions:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check User Permissions
+      id: check_permissions
+      run: |
+        echo "User: ${{ github.actor }}"
+
+    - name: Stop Workflow if No Write Access
+      if: steps.check_permissions.outputs.user_permissions != 'write'
+      run: |
+        echo "No permission to run this workflow."
+        exit 78 
+
+    - name: Continue Workflow
+      run: |
+        # Your workflow steps go here
+        echo "Workflow continues..."
