@@ -23,5 +23,5 @@ jobs:
       if: steps.check.outputs.has-permission
       run: echo "Congratulations! Your permissions to access the repository are sufficient."
     - name: Run only if user has NOT sufficient permissions
-      if: ! steps.check.outputs.has-permission
+      if: "! steps.check.outputs.has-permission"
       run: echo "Sorry! Your permissions are insufficient."
