@@ -1,5 +1,8 @@
 name: LoadTest
 
+# Note; this workflow is not triggered by any event, but can be manually triggered
+#       It only works on the 'main' branch.concurrency: 
+#       See https://docs.github.com/en/actions/using-workflows/manually-running-a-workflow
 on: workflow_dispatch
 
 jobs:
@@ -7,18 +10,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Check User Permissions
-      id: check_permissions
-      run: |
-        echo "User: ${{ github.actor }}"
 
     - name: Stop Workflow if No Write Access
-      if: steps.check_permissions.outputs.user_permissions != 'write'
+      if: ${{ github.event.pull_request.author_association != 'CONTRIBUTOR' && github.event.pull_request.author_association != 'MEMBER' }}
       run: |
-        echo "No permission to run this workflow."
+        echo "User: ${{ github.actor }}, No permission to run this workflow."
         exit 78 
 
     - name: Continue Workflow
       run: |
         # Your workflow steps go here
-        echo "Workflow continues..."
+        echo "User: ${{ github.actor }}, has permissionm, workflow continues..."
