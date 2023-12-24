@@ -37,8 +37,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
   
-      - name: Start containers
-        run: docker-compose -f "docker-compose-load.yml" up -d --build
+      - name: Start load test containers
+        run: make load-test-setup
   
       - name: Setup Go ${{ matrix.go-version }}
         uses: actions/setup-go@v4

@@ -14,16 +14,16 @@ import (
 )
 
 func TestKafkaRunning(t *testing.T) {
-	if !testConnection(KafkaHost, KafkaPort) {
-		t.Errorf("Can't connect to %s:%s - clients", KafkaHost, KafkaPort)
+	if !testConnection(KafkaServers) {
+		t.Errorf("Can't connect to %s - clients", KafkaServers)
 	}
-	if !testConnection(KafkaHost, ZooKeeperPort) {
-		t.Errorf("Can't connect to %s:%s - zookeeper", KafkaHost, ZooKeeperPort)
+	if !testConnection(ZooKeeperServers) {
+		t.Errorf("Can't connect to %s - zookeeper", ZooKeeperServers)
 	}
 }
 
 func TestOneMessage(t *testing.T) {
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, testConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := testProducer(t)
@@ -46,7 +46,7 @@ func TestOneMessage(t *testing.T) {
 	}.WithLogger(logger)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -68,7 +68,7 @@ func TestOneMessage(t *testing.T) {
 func TestMultipleBatches(t *testing.T) {
 	batchSize := 10
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, testConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := testProducer(t)
@@ -91,7 +91,7 @@ func TestMultipleBatches(t *testing.T) {
 	}.WithLogger(logger)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())

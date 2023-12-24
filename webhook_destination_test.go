@@ -16,7 +16,7 @@ import (
 func TestSendToWebhook(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, testConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := testProducer(t)
@@ -51,7 +51,7 @@ func TestSendToWebhook(t *testing.T) {
 	}.WithLogger(logger)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -77,7 +77,7 @@ func TestSendToWebhook(t *testing.T) {
 func TestSendToWebhookWithRetry(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, testConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := testProducer(t)
@@ -114,7 +114,7 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 	}.WithLogger(logger)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -140,7 +140,7 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 func TestSendToWebhookAuthToken(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, testConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := testProducer(t)
@@ -181,7 +181,7 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 	}.WithLogger(logger)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -207,7 +207,7 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 func TestSendToWebhookBadAuthToken(t *testing.T) {
 	batchSize := 1
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, testConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := testProducer(t)
@@ -250,7 +250,7 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	s.AddListener(tl)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())

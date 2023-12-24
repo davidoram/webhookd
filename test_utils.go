@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,11 +18,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	KafkaHost     = "localhost"
-	KafkaPort     = "9092"
-	ZooKeeperPort = "2081"
+var (
+	// List of comma separated kafka servers to connect to, defaults to "localhost:9092",
+	// or override with KAFKA_SERVERS env var
+	KafkaServers = "localhost:9092"
+
+	// List of comma separated zookeeper servers to connect to, defaults to "localhost:2081",
+	// or override with ZOOKEEPER_SERVERS env var
+	ZooKeeperServers = "localhost:2081"
 )
+
+func init() {
+	if host := os.Getenv("KAFKA_SERVERS"); host != "" {
+		KafkaServers = host
+	}
+	if port := os.Getenv("ZOOKEEPER_SERVERS"); port != "" {
+		ZooKeeperServers = port
+	}
+}
 
 type TestListener struct {
 	t       *testing.T
@@ -77,10 +92,9 @@ func (wh *TestDestination) Send(ctx context.Context, msgs []*kafka.Message) erro
 
 func testProducer(t *testing.T) *kafka.Producer {
 
-	hostPort := fmt.Sprintf("%s:%s", KafkaHost, KafkaPort)
-	t.Logf("stating producer, bootstrap.servers: %s", hostPort)
+	t.Logf("stating producer, bootstrap.servers: %s", KafkaServers)
 	p, err := kafka.NewProducer(&kafka.ConfigMap{
-		"bootstrap.servers": hostPort,
+		"bootstrap.servers": KafkaServers,
 		"acks":              "all",
 	})
 	assert.NoError(t, err, "creating kafka producer")
@@ -126,13 +140,15 @@ func sendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) 
 	close(deliveryChan)
 }
 
-func testConnection(host string, port string) bool {
-	address := net.JoinHostPort(host, port)
-	conn, err := net.DialTimeout("tcp", address, time.Second*1)
-	if err != nil {
-		return false
+func testConnection(hostPorts string) bool {
+	// hostPorts is a comma separated list of host:port pairs
+	for _, address := range strings.Split(hostPorts, ",") {
+		conn, err := net.DialTimeout("tcp", address, time.Second*1)
+		if err != nil {
+			return false
+		}
+		conn.Close()
 	}
-	conn.Close()
 	return true
 }
 
