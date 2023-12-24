@@ -28,3 +28,9 @@ coverage:
 	mkdir -p build 
 	go test -tags=dynamic -cover -coverprofile=build/c.out
 	go tool cover -html="build/c.out"
+
+load-test-setup:
+	docker compose --file load-test/docker-compose.yml up 
+
+load-test-teardown:
+	docker compose --file load-test/docker-compose.yml down 	
