@@ -30,6 +30,15 @@ services:
     depends_on:
       - zookeeper
 
+  csv-publish:
+    image: davidoram/csv-publish
+    networks:
+      - kafka-net
+    depends_on:
+      - kafka1
+    volumes:
+      - ./load-test/data:/data
+
 networks:
   kafka-net:
     driver: bridge
