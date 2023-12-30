@@ -26,10 +26,11 @@ type Message struct {
 	PublishedAt         sql.NullTime
 }
 
-func populateDatabase(db *sql.DB, csvFile string) (int, error) {
+func populateDatabase(db *sql.DB, csvFile string) (int, []string, error) {
+	topics := []string{}
 	file, err := os.Open(csvFile)
 	if err != nil {
-		return 0, err
+		return 0, topics, err
 	}
 	defer file.Close()
 
@@ -39,12 +40,12 @@ func populateDatabase(db *sql.DB, csvFile string) (int, error) {
 	// Ignore the header row
 	_, err = reader.Read()
 	if err != nil {
-		return 0, err
+		return 0, topics, err
 	}
 
 	records, err := reader.ReadAll()
 	if err != nil {
-		return 0, err
+		return 0, topics, err
 	}
 
 	// Create the messages table if not exists
@@ -59,13 +60,13 @@ func populateDatabase(db *sql.DB, csvFile string) (int, error) {
 		)
 	`)
 	if err != nil {
-		return 0, err
+		return 0, topics, err
 	}
 
 	// Truncate the messages table
 	_, err = db.Exec(`DELETE FROM messages`)
 	if err != nil {
-		return 0, err
+		return 0, topics, err
 	}
 
 	// Ensure uniqueness of the 'key' column
@@ -73,7 +74,7 @@ func populateDatabase(db *sql.DB, csvFile string) (int, error) {
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_key ON messages (key)
 	`)
 	if err != nil {
-		return 0, err
+		return 0, topics, err
 	}
 
 	// Insert records into the database
@@ -94,7 +95,7 @@ func populateDatabase(db *sql.DB, csvFile string) (int, error) {
 
 			_, err := db.Exec(query, args...)
 			if err != nil {
-				return 0, err
+				return 0, topics, err
 			}
 
 			// Reset values and args
@@ -102,8 +103,22 @@ func populateDatabase(db *sql.DB, csvFile string) (int, error) {
 			args = args[:0]
 		}
 	}
-	log.Printf("Loaded %d messages for publishing", len(records))
-	return len(records), nil
+
+	// Fetch the distinct topics
+	rows, err := db.Query(`SELECT DISTINCT topic FROM messages ORDER BY topic ASC`)
+	if err != nil {
+		return 0, topics, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var topic string
+		if err := rows.Scan(&topic); err != nil {
+			return 0, topics, err
+		}
+		topics = append(topics, topic)
+	}
+
+	return len(records), topics, nil
 }
 
 func logProducerEvents(ctx context.Context, producer *kafka.Producer) {
@@ -189,7 +204,7 @@ func fetchMessages(db *sql.DB, offsetMillis int64) ([]Message, error) {
 	LIMIT 100
 `, offsetMillis)
 	if err != nil {
-		log.Printf("Error querying the database:", err)
+		log.Printf("Error querying the database: %s", err)
 		return messagesToPublish, err
 	}
 	defer rows.Close()
@@ -204,7 +219,7 @@ func fetchMessages(db *sql.DB, offsetMillis int64) ([]Message, error) {
 			&message.PublishOffsetMillis,
 			&message.PublishedAt,
 		); err != nil {
-			log.Printf("Error scanning rows:", err)
+			log.Printf("Error scanning rows: %s", err)
 			return messagesToPublish, err
 		}
 
@@ -248,11 +263,13 @@ func main() {
 	defer db.Close()
 
 	// Populate the SQLite database
-	total, err := populateDatabase(db, *csvFile)
+	total, topics, err := populateDatabase(db, *csvFile)
 	if err != nil {
 		log.Printf("Error populating the database: %s", err)
 		return
 	}
+	log.Printf("Loaded %d messages for publishing, in %d topics", total, len(topics))
+	log.Printf("Topics: %s", strings.Join(topics, ", "))
 
 	// Set up Kafka producer configuration
 	log.Printf("Connecting to Kafka: %s", *kafkaBootstrapServers)
