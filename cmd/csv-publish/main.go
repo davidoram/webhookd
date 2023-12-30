@@ -26,10 +26,10 @@ type Message struct {
 	PublishedAt         sql.NullTime
 }
 
-func populateDatabase(db *sql.DB, csvFile string) error {
+func populateDatabase(db *sql.DB, csvFile string) (int, error) {
 	file, err := os.Open(csvFile)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer file.Close()
 
@@ -39,12 +39,12 @@ func populateDatabase(db *sql.DB, csvFile string) error {
 	// Ignore the header row
 	_, err = reader.Read()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	records, err := reader.ReadAll()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// Create the messages table if not exists
@@ -59,13 +59,13 @@ func populateDatabase(db *sql.DB, csvFile string) error {
 		)
 	`)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// Truncate the messages table
 	_, err = db.Exec(`DELETE FROM messages`)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// Ensure uniqueness of the 'key' column
@@ -73,7 +73,7 @@ func populateDatabase(db *sql.DB, csvFile string) error {
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_key ON messages (key)
 	`)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// Insert records into the database
@@ -94,7 +94,7 @@ func populateDatabase(db *sql.DB, csvFile string) error {
 
 			_, err := db.Exec(query, args...)
 			if err != nil {
-				return err
+				return 0, err
 			}
 
 			// Reset values and args
@@ -103,7 +103,7 @@ func populateDatabase(db *sql.DB, csvFile string) error {
 		}
 	}
 	log.Printf("Loaded %d messages for publishing", len(records))
-	return nil
+	return len(records), nil
 }
 
 func logProducerEvents(ctx context.Context, producer *kafka.Producer) {
@@ -248,7 +248,7 @@ func main() {
 	defer db.Close()
 
 	// Populate the SQLite database
-	err = populateDatabase(db, *csvFile)
+	total, err := populateDatabase(db, *csvFile)
 	if err != nil {
 		log.Printf("Error populating the database: %s", err)
 		return
@@ -265,7 +265,7 @@ func main() {
 		"go.batch.producer":      true,
 		"acks":                   "all",
 		"go.logs.channel.enable": true,
-		"debug":                  "broker", // "broker,topic,msg",
+		//"debug":                  "broker,topic,msg", // To see all debug messages, uncomment this line
 	})
 	if err != nil {
 		log.Printf("Error creating Kafka producer: %s", err)
@@ -286,6 +286,7 @@ func main() {
 
 	// Note the start time
 	startTime := time.Now()
+	nextLogTime := startTime.Add(10 * time.Second)
 
 	// Loop to publish messages
 	for {
@@ -317,15 +318,17 @@ func main() {
 			log.Printf("Error counting unpublished: %s", err)
 			return
 		}
-		unflushed := producer.Len()
+		if time.Now().After(nextLogTime) {
 
-		log.Printf("Published %d messages, pending %d, %d messages remaining\n", len(messagesToPublish), unflushed, unpublishedRowsCount)
+			log.Printf("Published %d messages from total %d", total-unpublishedRowsCount, total)
+			nextLogTime = time.Now().Add(10 * time.Second)
+		}
 		if len(messagesToPublish) == 0 {
 			time.Sleep(3 * time.Second)
 		}
 
 		// Exit the loop if there are no more rows to publish & all messages have been flushed
-		if unpublishedRowsCount == 0 && unflushed == 0 {
+		if unpublishedRowsCount == 0 {
 			break
 		}
 	}
