@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"context"
@@ -16,10 +16,10 @@ import (
 func TestSendToWebhook(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaServers))
+	require.True(t, TestConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1000
@@ -64,7 +64,7 @@ func TestSendToWebhook(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	// Wait for all messages to be received
@@ -77,10 +77,10 @@ func TestSendToWebhook(t *testing.T) {
 func TestSendToWebhookWithRetry(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaServers))
+	require.True(t, TestConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1000
@@ -127,7 +127,7 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	// Wait for all messages to be received
@@ -140,10 +140,10 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 func TestSendToWebhookAuthToken(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaServers))
+	require.True(t, TestConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1000
@@ -194,7 +194,7 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	// Wait for all messages to be received
@@ -207,10 +207,10 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 func TestSendToWebhookBadAuthToken(t *testing.T) {
 	batchSize := 1
 
-	require.True(t, testConnection(KafkaServers))
+	require.True(t, TestConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1
@@ -263,7 +263,7 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	// Wait to get a callback saying the messages couldnt be sent

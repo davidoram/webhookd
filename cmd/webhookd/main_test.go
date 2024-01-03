@@ -8,45 +8,46 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davidoram/webhookd/core"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestKafkaRunning(t *testing.T) {
-	if !testConnection(KafkaServers) {
-		t.Errorf("Can't connect to %s - clients", KafkaServers)
+	if !core.TestConnection(core.KafkaServers) {
+		t.Errorf("Can't connect to %s - clients", core.KafkaServers)
 	}
-	if !testConnection(ZooKeeperServers) {
-		t.Errorf("Can't connect to %s - zookeeper", ZooKeeperServers)
+	if !core.TestConnection(core.ZooKeeperServers) {
+		t.Errorf("Can't connect to %s - zookeeper", core.ZooKeeperServers)
 	}
 }
 
 func TestOneMessage(t *testing.T) {
-	require.True(t, testConnection(KafkaServers))
+	require.True(t, core.TestConnection(core.KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := core.TestProducer(t)
 	defer producer.Close()
 
-	dest := NewTestDest(t)
+	dest := core.NewTestDest(t)
 	var loggingLevel = new(slog.LevelVar)
 	loggingLevel.Set(slog.LevelDebug)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
-	s := Subscription{
+	s := core.Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
-		Topic: Topic{
+		Topic: core.Topic{
 			Topic: topic,
 		},
-		Config: Config{
+		Config: core.Config{
 			BatchSize: 1,
 		},
 		Destination: dest,
 	}.WithLogger(logger)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(KafkaServers)
+	err := s.Start(core.KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -54,7 +55,7 @@ func TestOneMessage(t *testing.T) {
 	go s.Consume(ctx)
 
 	key := uuid.NewString()
-	sendMsgBlocking(t, producer, key, "msg-1", topic)
+	core.SendMsgBlocking(t, producer, key, "msg-1", topic)
 
 	t.Logf("wait for batch to arrive...")
 	event := <-dest.Events
@@ -68,30 +69,30 @@ func TestOneMessage(t *testing.T) {
 func TestMultipleBatches(t *testing.T) {
 	batchSize := 10
 
-	require.True(t, testConnection(KafkaServers))
+	require.True(t, core.TestConnection(core.KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := core.TestProducer(t)
 	defer producer.Close()
 
-	dest := NewTestDest(t)
+	dest := core.NewTestDest(t)
 	var loggingLevel = new(slog.LevelVar)
 	loggingLevel.Set(slog.LevelDebug)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
-	s := Subscription{
+	s := core.Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
-		Topic: Topic{
+		Topic: core.Topic{
 			Topic: topic,
 		},
-		Config: Config{
+		Config: core.Config{
 			BatchSize: batchSize,
 		},
 		Destination: dest,
 	}.WithLogger(logger)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(KafkaServers)
+	err := s.Start(core.KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -105,7 +106,7 @@ func TestMultipleBatches(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		core.SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	received := map[string]string{}

@@ -1,4 +1,4 @@
-package main
+package core
 
 // SubscriptionEventType is an enum for the different types of events that can be sent to the subscription event channel.
 type SubscriptionEventType string

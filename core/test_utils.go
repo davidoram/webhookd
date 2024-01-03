@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"context"
@@ -90,7 +90,7 @@ func (wh *TestDestination) Send(ctx context.Context, msgs []*kafka.Message) erro
 	return nil
 }
 
-func testProducer(t *testing.T) *kafka.Producer {
+func TestProducer(t *testing.T) *kafka.Producer {
 
 	t.Logf("stating producer, bootstrap.servers: %s", KafkaServers)
 	p, err := kafka.NewProducer(&kafka.ConfigMap{
@@ -118,7 +118,7 @@ func testProducer(t *testing.T) *kafka.Producer {
 	return p
 }
 
-func sendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) {
+func SendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) {
 	m := &kafka.Message{
 		Key:            []byte(key),
 		Value:          []byte(value),
@@ -140,7 +140,7 @@ func sendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) 
 	close(deliveryChan)
 }
 
-func testConnection(hostPorts string) bool {
+func TestConnection(hostPorts string) bool {
 	// hostPorts is a comma separated list of host:port pairs
 	for _, address := range strings.Split(hostPorts, ",") {
 		conn, err := net.DialTimeout("tcp", address, time.Second*1)

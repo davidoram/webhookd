@@ -1,28 +1,30 @@
-package main
+package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/davidoram/webhookd/configuration"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
 
 type Subscription struct {
-	Name        string    `json:"name"`
-	ID          uuid.UUID `json:"id"`
-	Destination Destination
-	Topic       Topic  `json:"source"`
-	Filter      Filter `json:"filter"`
-	Config      Config `json:"config"`
+	Name   string    `json:"name" validate:"required|min_len:5" message:"required:{field} is required, with min length 5"`
+	ID     uuid.UUID `json:"id" validate:"required"`
+	Topic  Topic     `json:"source" validate:"required"                               `
+	Filter Filter    `json:"filter"`
+	Config Config    `json:"config"`
 
 	// Runtime elements
-	consumer  *kafka.Consumer
-	logger    *slog.Logger
-	listeners []SubscriptionListener
+	Destination Destination
+	consumer    *kafka.Consumer
+	logger      *slog.Logger
+	listeners   []SubscriptionListener
 }
 
 var ErrSendFailed = errors.New("send transactionally failed")
@@ -30,6 +32,29 @@ var ErrContextCancelled = errors.New("context cancelled")
 
 func NewSubscription() Subscription {
 	return Subscription{logger: slog.Default()}
+}
+
+func NewSubscriptionFromJSON(data []byte) (Subscription, error) {
+
+	var s configuration.Subscription
+	err := json.Unmarshal(data, &s)
+	if err != nil {
+		return Subscription{}, err
+	}
+	topic := Topic{Topic: s.Source[0].Topic}
+	filter := Filter{JMESFilter: s.Source[0].JmesFilters[0]}
+
+	sub := Subscription{
+		Name:   s.Name,
+		ID:     uuid.New(),
+		Topic:  topic,
+		Filter: filter,
+		Config: Config{
+			MaxWait:   time.Duration(s.Configuration.Batching.MaxBatchIntervalSeconds) * time.Second,
+			BatchSize: s.Configuration.Batching.MaxBatchSize,
+		},
+	}
+	return sub, err
 }
 
 func (s Subscription) WithLogger(logger *slog.Logger) Subscription {
@@ -84,7 +109,7 @@ func (s *Subscription) Consume(ctx context.Context) {
 	batch := make([]*kafka.Message, 0)
 	run := true
 
-	pushTicker := time.NewTicker(s.Config.maxWait)
+	pushTicker := time.NewTicker(s.Config.MaxWait)
 	for run {
 		select {
 		case <-ctx.Done():

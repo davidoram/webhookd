@@ -34,9 +34,9 @@ clean:
 
 build: 
 	mkdir -p build 
-	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/webhookd -tags=dynamic *.go
-	go build -o build/csv-generate -tags=dynamic cmd/csv-generate/main.go
-	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/csv-publish -tags=dynamic cmd/csv-publish/main.go
+	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/webhookd -tags=dynamic cmd/webhookd/*.go
+	go build -o build/csv-generate -tags=dynamic cmd/csv-generate/*.go
+	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/csv-publish -tags=dynamic cmd/csv-publish/*.go
 
 load-test-build: build
 	docker build -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
