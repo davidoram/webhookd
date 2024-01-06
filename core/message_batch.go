@@ -1,4 +1,4 @@
-package main
+package core
 
 type Message struct {
 	Topic   string            `json:"topic"`

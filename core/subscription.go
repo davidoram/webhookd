@@ -1,28 +1,34 @@
-package main
+package core
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/davidoram/webhookd/configuration"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
 
 type Subscription struct {
-	Name        string    `json:"name"`
-	ID          uuid.UUID `json:"id"`
-	Destination Destination
-	Topic       Topic  `json:"source"`
-	Filter      Filter `json:"filter"`
-	Config      Config `json:"config"`
+	Name      string    `json:"name" validate:"required|min_len:5" message:"required:{field} is required, with min length 5"`
+	ID        uuid.UUID `validate:"required"`
+	Topic     Topic     `json:"source" validate:"required"                               `
+	Filter    Filter    `json:"filter"`
+	Config    Config    `json:"config"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt sql.NullTime // NULL if not deleted, ie: still 'active'
 
 	// Runtime elements
-	consumer  *kafka.Consumer
-	logger    *slog.Logger
-	listeners []SubscriptionListener
+	Destination Destination
+	consumer    *kafka.Consumer
+	logger      *slog.Logger
+	listeners   []SubscriptionListener
 }
 
 var ErrSendFailed = errors.New("send transactionally failed")
@@ -32,9 +38,57 @@ func NewSubscription() Subscription {
 	return Subscription{logger: slog.Default()}
 }
 
+// NewSubscriptionFromJSON creates a new Subscription from a JSON byte array, it validates the JSON
+// and returns an error if the JSON is invalid, or if any of the validation rules fail.
+func NewSubscriptionFromJSON(id uuid.UUID, data []byte, createdAt, updatedAt time.Time) (Subscription, error) {
+
+	var s configuration.Subscription
+	err := json.Unmarshal(data, &s)
+	if err != nil {
+		return Subscription{}, err
+	}
+	topic := Topic{Topic: s.Source[0].Topic}
+	filter := Filter{JMESFilter: s.Source[0].JmesFilters[0]}
+
+	sub := Subscription{
+		Name:   s.Name,
+		ID:     id,
+		Topic:  topic,
+		Filter: filter,
+		Config: Config{
+			MaxWait:   time.Duration(s.Configuration.Batching.MaxBatchIntervalSeconds) * time.Second,
+			BatchSize: s.Configuration.Batching.MaxBatchSize,
+		},
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		DeletedAt: sql.NullTime{},
+	}
+	return sub, err
+}
+
+func (s Subscription) IsActive() bool {
+	return !s.DeletedAt.Valid
+}
+
 func (s Subscription) WithLogger(logger *slog.Logger) Subscription {
 	s.logger = logger
 	return s
+}
+
+// MarshallForDatabase returns the subscription as a JSON byte array, in the format suitable for storing in the database
+// it does not include the fields stored separately in the database eg: ID, CreatedAt, UpdatedAt or DeletedAt fields
+func (s Subscription) MarshallForDatabase() ([]byte, error) {
+	return json.Marshal(s)
+}
+
+// MarshallForAPI returns the subscription as a JSON byte array, in the format suitable for rendering to the API
+// which includes the fields stored separately in the database eg: ID, CreatedAt, UpdatedAt or DeletedAt fields
+func (s Subscription) MarshallForAPI() ([]byte, error) {
+	return json.Marshal(s)
+}
+
+func (s Subscription) ResourcePath() string {
+	return fmt.Sprintf("/subscriptions/%s", s.ID)
 }
 
 func (s *Subscription) AddListener(l SubscriptionListener) {
@@ -84,12 +138,12 @@ func (s *Subscription) Consume(ctx context.Context) {
 	batch := make([]*kafka.Message, 0)
 	run := true
 
-	pushTicker := time.NewTicker(s.Config.maxWait)
+	pushTicker := time.NewTicker(s.Config.MaxWait)
 	for run {
 		select {
 		case <-ctx.Done():
 			s.logger.Info("consume loop terminating", slog.String("consumer_id", s.ID.String()))
-			return
+			run = false
 		case <-pushTicker.C:
 			if len(batch) > 0 {
 				var err error

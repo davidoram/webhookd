@@ -237,3 +237,18 @@ make test
 
 Because load tests take a long time to run, and open source projects have [billing limits](https://docs.github.com/en/billing/managing-billing-for-github-actions/about-billing-for-github-actions), the load test action is triggered manually, by running the 'load-test' action manually from the 'Actions' tab in GitHub.
 
+Load tests run inside docker, and it works as follows:
+
+- Build the tests in a docker container
+- Run the docker-compose file
+- Run webhookd
+- Create a webhook consumer that saves all the messages it receives, into a sqlite database 
+- Trigger the producer that creates a large multitude of messages, over a period of time, performing 
+    - Scale up/down the kafka cluster
+- Wait until all messages have been consumed
+- Run comparison tests to check:
+    - Each input message is captured in the webhook
+    - Count the the number of duplicates received
+    - Calculate the min,max,average time to send
+
+
