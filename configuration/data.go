@@ -5,10 +5,6 @@ import (
 	"encoding/json"
 )
 
-// func init() {
-// 	govalidator.SetFieldsRequiredByDefault(true)
-// }
-
 type Subscription struct {
 	Name          string        `json:"name" valid:"alphanum,required"`
 	Active        bool          `json:"active" valid:"required"`
