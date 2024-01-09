@@ -8,12 +8,12 @@ WORKDIR /app
 COPY . .
 
 # Build the Go application
-RUN cd cmd/csv-publish && \
+RUN cd cmd/webhookd && \
     CGO_ENABLED=1 go build \
     -tags musl \
     -v \
     -ldflags="-extldflags=-static" \
-    -o /app/csv-publish *.go
+    -o /app/webhookd *.go
 
 # Use a minimal Alpine image as the base image
 FROM alpine:latest
@@ -25,10 +25,10 @@ RUN apk --no-cache add sqlite
 WORKDIR /app
 
 # Copy the compiled Go application from the builder image
-COPY --from=builder /app/csv-publish /app/csv-publish
+COPY --from=builder /app/webhookd /app/webhookd
 
 # Specify the entry point and default command to run the application
-ENTRYPOINT ["/app/csv-publish"]
+ENTRYPOINT ["/app/webhookd"]
 
-# Allow specifying CSV and SQLite database files on the /data external volume
-CMD ["-csv", "/data/input.csv", "-db", "/data/input.db"]
+# By default specify SQLite database files on external volume /data
+CMD ["-db", "file:/data/webhookd.db?vacuum=1"]

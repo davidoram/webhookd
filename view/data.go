@@ -1,16 +1,28 @@
-// configuration package contains structs that map to the JSON configuration.
-package configuration
+// view package contains data structures exposed via the API
+package view
 
 import (
+	"database/sql"
 	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
 )
 
-type Subscription struct {
+type SubscriptionData struct {
 	Name          string        `json:"name" valid:"alphanum,required"`
 	Active        bool          `json:"active" valid:"required"`
 	Destination   Destination   `json:"destination" valid:"required"`
 	Source        []Source      `json:"source" valid:"required"`
 	Configuration Configuration `json:"configuration"`
+}
+
+type Subscription struct {
+	SubscriptionData
+	ID        uuid.UUID    `json:"id" `
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	DeletedAt sql.NullTime `json:"deleted_at,null"`
 }
 
 type Destination struct {
@@ -45,8 +57,9 @@ type PayloadSize struct {
 }
 
 type Retry struct {
-	MaxRetries     int    `json:"max_retries" valid:"range(1,10)"`
-	RetryAlgorithm string `json:"retry_algorithm" valid:"required"`
+	MaxRetries                 int    `json:"max_retries" valid:"range(0,10)"`
+	RetryAlgorithm             string `json:"retry_algorithm" valid:"required,in(exponential_backoff,fixed)"`
+	FixedRetryIntervalDuration string `json:"fixed_interval_retry_dur" valid:"type(string)"`
 }
 
 type Alerting struct {
@@ -62,23 +75,41 @@ func UnmarshalSubscription(data []byte) (Subscription, error) {
 
 func NewSubscription() Subscription {
 	return Subscription{
-		Active: true,
-		Configuration: Configuration{
-			Batching: Batching{
-				MaxBatchSize:            50,
-				MaxBatchIntervalSeconds: 30,
-			},
-			PayloadSize: PayloadSize{
-				MaxPayloadSizeKb: 1024,
-			},
-			Retry: Retry{
-				MaxRetries:     3,
-				RetryAlgorithm: "exponential_backoff",
-			},
-			Alerting: Alerting{
-				AlertChannel: "none",
-				AlertEmails:  []string{},
+		SubscriptionData: SubscriptionData{
+			Active: true,
+			Configuration: Configuration{
+				Batching: Batching{
+					MaxBatchSize:            50,
+					MaxBatchIntervalSeconds: 30,
+				},
+				PayloadSize: PayloadSize{
+					MaxPayloadSizeKb: 1024,
+				},
+				Retry: Retry{
+					MaxRetries:     3,
+					RetryAlgorithm: "exponential_backoff",
+				},
+				Alerting: Alerting{
+					AlertChannel: "none",
+					AlertEmails:  []string{},
+				},
 			},
 		},
 	}
+}
+
+// NewSubscriptionFromJSON creates a new Subscription from a JSON byte array, it validates the JSON
+// and returns an error if the JSON is invalid, or if any of the validation rules fail.
+func NewSubscriptionFromJSON(id uuid.UUID, data []byte, createdAt, updatedAt time.Time, deletedAt sql.NullTime) (Subscription, error) {
+
+	var s Subscription
+	err := json.Unmarshal(data, &s)
+	if err != nil {
+		return Subscription{}, err
+	}
+	s.ID = id
+	s.CreatedAt = createdAt
+	s.UpdatedAt = updatedAt
+	s.DeletedAt = deletedAt
+	return s, err
 }

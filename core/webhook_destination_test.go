@@ -32,7 +32,7 @@ func TestSendToWebhook(t *testing.T) {
 	// Create the destination
 	dest := NewWebhook(fmt.Sprintf("%s/messages", svr.Server.URL))
 	// Don't make the test wait for retries
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
 	var loggingLevel = new(slog.LevelVar)
@@ -95,7 +95,7 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 	// Create the destination
 	dest := NewWebhook(fmt.Sprintf("%s/messages", svr.Server.URL))
 	// Don't make the test wait for retries
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
 	var loggingLevel = new(slog.LevelVar)
@@ -159,10 +159,10 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 	// Create the destination
 	dest := NewWebhook(fmt.Sprintf("%s/messages", svr.Server.URL))
 	// Don't make the test wait for retries
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 	// Set the auth token
 	dest = dest.WithClient(NewAuthTokenClient(svr.AuthHeaderValue, time.Second*1))
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
 	var loggingLevel = new(slog.LevelVar)
@@ -226,10 +226,10 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	// Create the destination
 	dest := NewWebhook(fmt.Sprintf("%s/messages", svr.Server.URL))
 	// Don't make the test wait for retries
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 	// Set the auth token
 	dest = dest.WithClient(NewAuthTokenClient("wrong-auth-token", time.Millisecond*200))
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
 	var loggingLevel = new(slog.LevelVar)

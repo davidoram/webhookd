@@ -38,6 +38,11 @@ build:
 	go build -o build/csv-generate -tags=dynamic cmd/csv-generate/*.go
 	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/csv-publish -tags=dynamic cmd/csv-publish/*.go
 
+dockerbuild:
+	docker build -t davidoram/webhookd -f cmd/webhookd/Dockerfile .
+	docker build -t davidoram/csv-generate -f cmd/csv-generate/Dockerfile .
+	docker build -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
+	
 load-test-build: build
 	docker build -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
 
@@ -57,4 +62,10 @@ load-test-setup:
 	docker compose --file load-test/docker-compose.yml up --detach --force-recreate --remove-orphans
 
 load-test-teardown:
-	docker compose --file load-test/docker-compose.yml down 	
+	docker compose --file load-test/docker-compose.yml down 
+	
+curl-create-subscription:
+	curl -X POST -H "Content-Type: application/json" -d @examples/new-subscription.json http://localhost:8080/1/subscriptions
+
+curl-list-subscriptions:
+	curl -X GET -H "Content-Type: application/json" http://localhost:8080/1/subscriptions

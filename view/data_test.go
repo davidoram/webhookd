@@ -1,4 +1,4 @@
-package configuration
+package view
 
 import (
 	"testing"
@@ -126,12 +126,12 @@ func TestValidateSubscriptions(t *testing.T) {
 		"empty name": {
 			`{"name":"","destination":{"kind":"webhook","webhook":{"url":"https://example.com/webhook"}},"source":[{"topic":"path.to.my.topic"}]}`,
 			"name",
-			"name: non zero value required",
+			"SubscriptionData.name: non zero value required",
 		},
 		"webhook URL invalid": {
 			`{"name":"s1","destination":{"kind":"webhook","webhook":{"url":"not-a-url"}},"source":[{"topic":"path.to.my.topic"}]}`,
 			"webhook",
-			"Destination.Webhook.url: not-a-url does not validate as url",
+			"SubscriptionData.Destination.Webhook.url: not-a-url does not validate as url",
 		},
 	}
 	for name, test := range tests {

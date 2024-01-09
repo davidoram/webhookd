@@ -12,8 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/davidoram/webhookd/adapter"
 	"github.com/davidoram/webhookd/core"
+	"github.com/davidoram/webhookd/view"
+	"github.com/davidoram/webhookd/web"
 	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/jba/muxpatterns" // Routing proposal extension to stdlib https://github.com/golang/go/issues/61410
 )
@@ -54,23 +58,32 @@ func main() {
 	// Create a subscription change channel that will be used to notify
 	// the subscription manager of changes to the subscriptions
 	subChanges := make(chan core.SubscriptionSetEvent)
-	go GenerateSubscriptionChanges(ctx, db, subChanges, *pollingPeriod)
 
 	// Create a subscription manager that will manage the subscriptions
 	// and their lifecycle, and start it
 	manager := core.NewSubscriptionManager(*kafkaBootstrapServers)
-	manager.Start(ctx, subChanges)
+	// start the subscription manager in a goroutine
+	go manager.Start(ctx, subChanges)
 	defer manager.Close()
+	slog.Info("started subscription manager")
+
+	// Start a goroutine that will poll the database for changes to the subscriptions
+	go GenerateSubscriptionChanges(ctx, db, subChanges, *pollingPeriod)
+	slog.Info("listening for subscription changes")
 
 	// Start a web server to handle API requests, that will quit when the context is cancelled
-	hctx := core.HandlerContext{Db: db}
+	hctx := web.HandlerContext{Db: db}
 	mux := muxpatterns.NewServeMux()
-	mux.HandleFunc("POST /subscriptions", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		// Pass the context to the handler
 		hctx.PostSubscriptionHandler(w, r, ctx)
 	})
+	mux.HandleFunc("GET /1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
+		// Pass the context to the handler
+		hctx.ListSubscriptionsHandler(w, r, ctx)
+	})
 
-	slog.Info("http server starting", slog.Any("address", httpAddress))
+	slog.Info("http server starting", slog.Any("address", *httpAddress))
 	server := &http.Server{
 		Addr:    *httpAddress,
 		Handler: mux,
@@ -110,30 +123,50 @@ func main() {
 // It exists when the context is cancelled, or an error occurs.
 func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges chan core.SubscriptionSetEvent, pollingPeriod time.Duration) error {
 
-	// Get all the subscriptions from the database
-	subs, err := core.GetActiveSubscriptions(ctx, db)
-	if err != nil {
-		return err
+	vSubs := view.SubscriptionCollection{
+		Subscriptions: []view.Subscription{},
+		Offset:        0,
+		Limit:         100,
 	}
 
 	// Create a map of the subscriptions by ID
-	subMap := map[uuid.UUID]core.Subscription{}
+	cSubMap := map[uuid.UUID]core.Subscription{}
 
-	// Save each subscription to the map, send each subscription to the channel as a NewSubscriptionEvent,
-	// and find the max updated_at time/ so we can detect any new subscriptions added to the database
+	// Read the subscriptions in batches, until all subscriptions have been read
 	maxUpdatedAt := time.Date(1990, time.January, 1, 0, 0, 0, 0, time.UTC)
-	for _, sub := range subs {
-
-		subMap[sub.ID] = sub
-
-		subChanges <- core.SubscriptionSetEvent{
-			Type:         core.NewSubscriptionEvent,
-			Subscription: &sub,
+	for {
+		// Get all the subscriptions from the database
+		vSubs, err := core.GetActiveSubscriptions(ctx, db, vSubs.Offset, vSubs.Limit)
+		if err != nil {
+			return err
 		}
 
-		if sub.UpdatedAt.After(maxUpdatedAt) {
-			maxUpdatedAt = sub.UpdatedAt
+		// Save each subscription to the map, send each subscription to the channel as a NewSubscriptionEvent,
+		// and find the max updated_at time/ so we can detect any new subscriptions added to the database
+		for _, vsub := range vSubs.Subscriptions {
+			csub, err := adapter.ViewToCoreAdapter(vsub)
+			if err != nil {
+				return err
+			}
+			cSubMap[vsub.ID] = csub
+
+			subChanges <- core.SubscriptionSetEvent{
+				Type:         core.NewSubscriptionEvent,
+				Subscription: &csub,
+			}
+
+			if vsub.UpdatedAt.After(maxUpdatedAt) {
+				maxUpdatedAt = vsub.UpdatedAt
+			}
 		}
+
+		// If we have read all the subscriptions, exit the loop
+		if len(vSubs.Subscriptions) == 0 {
+			break
+		}
+
+		// Update the offset, so we can read the next batch of subscriptions
+		vSubs.Offset += vSubs.Limit
 	}
 
 	// start a loop that will run until the context is cancelled, or an error occurs
@@ -146,60 +179,64 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 		default:
 		}
 
-		// Get all the subscriptions from the database
-		subs, err := core.GetSubscriptionsUpdatedSince(ctx, db, maxUpdatedAt)
+		// Get all the subscriptions from the database, updated since the maxUpdatedAt time
+		vSubs, err := core.GetSubscriptionsUpdatedSince(ctx, db, maxUpdatedAt, 0, 100)
 		if err != nil {
 			return err
 		}
 
 		// Create a map of the 'updated' subscriptions by ID
 		changedSubMap := map[uuid.UUID]core.Subscription{}
-		for _, sub := range subs {
-			changedSubMap[sub.ID] = sub
+		for _, vSub := range vSubs.Subscriptions {
+			csub, err := adapter.ViewToCoreAdapter(vSub)
+			if err != nil {
+				return err
+			}
+			changedSubMap[vSub.ID] = csub
 		}
 
 		// Process any changes to the subscriptions
-		for id, sub := range changedSubMap {
+		for id, cSub := range changedSubMap {
 
 			// New if not in the subMap
-			if _, ok := subMap[id]; !ok {
+			if _, ok := cSubMap[id]; !ok {
 
 				// Update the map
-				subMap[sub.ID] = sub
+				cSubMap[cSub.ID] = cSub
 
 				// Publish the change to the channel
 				subChanges <- core.SubscriptionSetEvent{
 					Type:         core.NewSubscriptionEvent,
-					Subscription: &sub,
+					Subscription: &cSub,
 				}
 
 			} else {
 				// Updated if IsActive
-				if sub.IsActive() {
+				if cSub.IsActive() {
 					// Update the map
-					subMap[sub.ID] = sub
+					cSubMap[cSub.ID] = cSub
 
 					// Publish the change to the channel
 					subChanges <- core.SubscriptionSetEvent{
 						Type:         core.UpdatedSubscriptionEvent,
-						Subscription: &sub,
+						Subscription: &cSub,
 					}
 
 				} else {
 					// Subscription deleted, remove from the map
-					delete(subMap, sub.ID)
+					delete(cSubMap, cSub.ID)
 
 					// Publish the change to the channel
 					subChanges <- core.SubscriptionSetEvent{
 						Type:         core.DeletedSubscriptionEvent,
-						Subscription: &sub,
+						Subscription: &cSub,
 					}
 
 				}
 			}
 			// Update the maxUpdatedAt time
-			if sub.UpdatedAt.After(maxUpdatedAt) {
-				maxUpdatedAt = sub.UpdatedAt
+			if cSub.UpdatedAt.After(maxUpdatedAt) {
+				maxUpdatedAt = cSub.UpdatedAt
 			}
 		}
 		// Sleep for the polling period

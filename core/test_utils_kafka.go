@@ -90,6 +90,10 @@ func (wh *TestDestination) Send(ctx context.Context, msgs []*kafka.Message) erro
 	return nil
 }
 
+func (wh *TestDestination) TypeName() string {
+	return "test_destination"
+}
+
 func TestProducer(t *testing.T) *kafka.Producer {
 
 	t.Logf("stating producer, bootstrap.servers: %s", KafkaServers)

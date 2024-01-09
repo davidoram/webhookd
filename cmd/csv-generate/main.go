@@ -16,10 +16,10 @@ type Payload struct {
 
 func main() {
 	// Read csvFile, and rows, and duration from command line arguments
-	csvFile := flag.String("csv", "input.csv", "Path to the CSV file")
-	rows := flag.Int("rows", 1000, "Number of rows to generate")
-	topics := flag.Int("topics", 20, "Number of topics to use")
-	dur := flag.Duration("duration", time.Minute*1, "Duration to generate rows for")
+	csvFile := flag.String("csv", "input.csv", "Path to the CSV file, defaults to 'input.csv'")
+	rows := flag.Int("rows", 1000, "Number of rows to generate, defaults to 1000")
+	topics := flag.Int("topics", 3, "Number of topics to use, defaults to 3")
+	dur := flag.Duration("duration", time.Minute*1, "Duration to generate rows for, defaults to 1 min")
 
 	flag.Parse()
 

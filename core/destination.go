@@ -11,4 +11,8 @@ type Destination interface {
 	// Will be called repeatedly with the same messages until the Destination returns nil to indicate that
 	// the destination has accepted the messages, and is ready to receive the next batch
 	Send(context.Context, []*kafka.Message) error
+
+	// TypeName returns the destination name, and is used to
+	// configure the system JSON configuration eg: "webhook"
+	TypeName() string
 }
