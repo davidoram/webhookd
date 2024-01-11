@@ -27,6 +27,7 @@ func TestMain(m *testing.M) {
 
 func TestPostSubscriptionHandlerResponse(t *testing.T) {
 	db := core.OpenTestDatabase(t)
+	defer db.Close()
 	hc := HandlerContext{Db: db}
 	cases := []string{"new-subscription.json"}
 	for _, c := range cases {
@@ -74,6 +75,7 @@ func TestPostSubscriptionHandlerResponse(t *testing.T) {
 func TestListSubscriptionsHandler(t *testing.T) {
 	// Should start with no subscriptions
 	db := core.OpenTestDatabase(t)
+	defer db.Close()
 	hc := HandlerContext{Db: db}
 
 	// Make a request to list subscriptions, should be none
