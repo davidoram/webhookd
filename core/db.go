@@ -8,6 +8,7 @@ import (
 
 	"github.com/davidoram/webhookd/view"
 	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func MigrateDB(ctx context.Context, db *sql.DB) error {

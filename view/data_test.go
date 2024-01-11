@@ -1,12 +1,37 @@
 package view
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/asaskevich/govalidator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	// Change directory to the root of the project, so that the relative paths in the tests work
+	err := os.Chdir("..")
+	if err != nil {
+		panic(err)
+	}
+	os.Exit(m.Run())
+}
+
+func TestParseValidData(t *testing.T) {
+	cases := []string{"new-subscription.json"}
+	for _, c := range cases {
+		t.Run(c, func(t *testing.T) {
+			input, err := os.ReadFile(filepath.Join("testdata", c))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = UnmarshalSubscription(input)
+			require.NoError(t, err)
+		})
+	}
+}
 
 func TestUnmarshalSubscription(t *testing.T) {
 	testData := []byte(`

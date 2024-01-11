@@ -1,11 +1,12 @@
 {
     "name": "test-sub-1",
+    "active": true,
     "destination": {
         "kind": "webhook",
         "webhook": {
             "url": "https://localhost:9090/",
             "headers": [
-                "X-API-KEY: e2315fb8-fe95-4d1d-a553-dd34ad1ea4db"
+                "X-Api-Key: e2315fb8-fe95-4d1d-a553-dd34ad1ea4db"
             ]
         }
     },
@@ -19,19 +20,19 @@
         "batching": {
             "max_batch_size": 10,
             "max_batch_interval_seconds": 10
+        },
+        "payload_size": {
+            "max_payload_size_kb": 0
+        },
+        "retry": {
+            "max_retries": 3,
+            "retry_algorithm": "exponential_backoff",
+            "fixed_interval_retry_dur": ""
+        },
+        "alerting": {
+            "alert_channel": "",
+            "alert_emails": null
         }
     },
-    "payload_size": {
-        "max_payload_size_kb": 100
-    },
-    "retry": {
-        "max_retries": 3,
-        "retry_algorithm": "exponential_backoff"
-    },
-    "alerting": {
-        "alert_channel": "email",
-        "alert_emails": [
-            "admin@client.com"
-        ]
-    }
+    "deleted_at": null
 }

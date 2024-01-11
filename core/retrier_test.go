@@ -18,7 +18,7 @@ func TestExponentialRetrier(t *testing.T) {
 	assert.Equal(t, 320*time.Second, ExponentialRetrier{}.RetryIn(15, 5))
 	assert.Equal(t, 327680*time.Second, ExponentialRetrier{}.RetryIn(15, 15))
 	// Check the name
-	assert.Equal(t, "exponential", ExponentialRetrier{}.Name())
+	assert.Equal(t, "exponential_backoff", ExponentialRetrier{}.Name())
 }
 
 func TestFixedRetrier(t *testing.T) {
@@ -27,5 +27,5 @@ func TestFixedRetrier(t *testing.T) {
 	assert.Equal(t, 1*time.Millisecond, r.RetryIn(5, 5))
 	assert.Equal(t, 1*time.Millisecond, r.RetryIn(50000000, 5))
 	// Check the name
-	assert.Equal(t, "fixed", ExponentialRetrier{}.Name())
+	assert.Equal(t, "fixed", r.Name())
 }

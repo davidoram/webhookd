@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -8,17 +9,17 @@ import (
 	"github.com/davidoram/webhookd/core"
 	"github.com/davidoram/webhookd/view"
 	"github.com/pkg/errors"
+	"gopkg.in/guregu/null.v4"
 )
 
 // ViewToCoreAdapter converts a view.Subscription to a core.Subscription
 func ViewToCoreAdapter(vSub view.Subscription) (core.Subscription, error) {
 	var cSub core.Subscription
 	cSub.ID = vSub.ID
+	cSub.Name = vSub.Name
 	cSub.CreatedAt = vSub.CreatedAt
 	cSub.UpdatedAt = vSub.UpdatedAt
-	cSub.DeletedAt = vSub.DeletedAt
-
-	cSub.Name = vSub.Name
+	cSub.DeletedAt = sql.NullTime{Time: vSub.DeletedAt.Time, Valid: vSub.Active}
 
 	// Convert the Topic
 	cSub.Topic = core.Topic{}
@@ -73,7 +74,7 @@ func ViewToCoreAdapter(vSub view.Subscription) (core.Subscription, error) {
 			}
 			webhook.Retry = core.FixedRetrier{Duration: interval}
 		default:
-			return cSub, errors.New("Missing or invalid retry algorithm")
+			return cSub, fmt.Errorf("missing or invalid retry algorithm: '%s'", vSub.Configuration.Retry.RetryAlgorithm)
 		}
 
 		cSub.Destination = webhook
@@ -89,7 +90,7 @@ func CoreToViewAdapter(cSub core.Subscription) (view.Subscription, error) {
 	vSub.ID = cSub.ID
 	vSub.CreatedAt = cSub.CreatedAt
 	vSub.UpdatedAt = cSub.UpdatedAt
-	vSub.DeletedAt = cSub.DeletedAt
+	vSub.DeletedAt = null.NewTime(cSub.DeletedAt.Time, cSub.DeletedAt.Valid)
 	vSub.Name = cSub.Name
 	vSub.Active = cSub.IsActive()
 	vSub.Source = []view.Source{
@@ -107,10 +108,11 @@ func CoreToViewAdapter(cSub core.Subscription) (view.Subscription, error) {
 	// Convert the Destination
 	switch cSub.Destination.TypeName() {
 	case "webhook":
+		wndest := cSub.Destination.(core.WebhookDestination)
 		vSub.Destination.Kind = "webhook"
-		vSub.Destination.Webhook.URL = cSub.Destination.(*core.WebhookDestination).URL
+		vSub.Destination.Webhook.URL = wndest.URL
 		vSub.Destination.Webhook.Headers = []string{}
-		for key, values := range cSub.Destination.(*core.WebhookDestination).Headers {
+		for key, values := range wndest.Headers {
 			vSub.Destination.Webhook.Headers = append(vSub.Destination.Webhook.Headers, fmt.Sprintf("%s:%s", key, values[0]))
 		}
 	default:
@@ -120,7 +122,7 @@ func CoreToViewAdapter(cSub core.Subscription) (view.Subscription, error) {
 	// Convert the Retry
 	switch cSub.Destination.TypeName() {
 	case "webhook":
-		wndest := cSub.Destination.(*core.WebhookDestination)
+		wndest := cSub.Destination.(core.WebhookDestination)
 		vSub.Configuration.Retry.MaxRetries = wndest.MaxRetries
 
 		// Convert the retrier config

@@ -25,7 +25,7 @@ var WebhookSendFailed = errors.New("webhook send failed")
 // NewWebhook creates a new WebhookDestination using the given URL, and a default retry policy
 // it also uses the default http.Client
 func NewWebhook(url string) WebhookDestination {
-	return WebhookDestination{URL: url, MaxRetries: 5, Retry: ExponentialRetrier{}, client: http.DefaultClient}
+	return WebhookDestination{URL: url, MaxRetries: 5, Retry: ExponentialRetrier{}, client: http.DefaultClient, Headers: make(http.Header)}
 }
 
 func (wh WebhookDestination) TypeName() string {

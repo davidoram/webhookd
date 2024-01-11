@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.in/guregu/null.v4"
 )
 
 type SubscriptionData struct {
@@ -19,10 +20,10 @@ type SubscriptionData struct {
 
 type Subscription struct {
 	SubscriptionData
-	ID        uuid.UUID    `json:"id" `
-	CreatedAt time.Time    `json:"created_at"`
-	UpdatedAt time.Time    `json:"updated_at"`
-	DeletedAt sql.NullTime `json:"deleted_at,null"`
+	ID        uuid.UUID `json:"id" `
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	DeletedAt null.Time `json:"deleted_at"`
 }
 
 type Destination struct {
@@ -110,6 +111,6 @@ func NewSubscriptionFromJSON(id uuid.UUID, data []byte, createdAt, updatedAt tim
 	s.ID = id
 	s.CreatedAt = createdAt
 	s.UpdatedAt = updatedAt
-	s.DeletedAt = deletedAt
+	s.DeletedAt = null.NewTime(deletedAt.Time, deletedAt.Valid)
 	return s, err
 }
