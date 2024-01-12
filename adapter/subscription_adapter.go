@@ -19,7 +19,7 @@ func ViewToCoreAdapter(vSub view.Subscription) (core.Subscription, error) {
 	cSub.Name = vSub.Name
 	cSub.CreatedAt = vSub.CreatedAt
 	cSub.UpdatedAt = vSub.UpdatedAt
-	cSub.DeletedAt = sql.NullTime{Time: vSub.DeletedAt.Time, Valid: vSub.Active}
+	cSub.DeletedAt = sql.NullTime{Time: vSub.DeletedAt.Time, Valid: vSub.DeletedAt.Valid}
 
 	// Convert the Topic
 	cSub.Topic = core.Topic{}
