@@ -83,7 +83,7 @@ func (hctx HandlerContext) PostSubscriptionHandler(w http.ResponseWriter, r *htt
 		http.Error(w, "Error marshalling subscription", http.StatusInternalServerError)
 		return
 	}
-	slog.Info("Subscription added", slog.Any("subscription", vsub.ID))
+	slog.Info("Subscription added", slog.Any("id", vsub.ID), slog.String("name", vsub.Name))
 
 	// Set the Location header to the URL of the newly created resource
 	w.Header().Set("Location", csub.ResourcePath())
@@ -132,8 +132,7 @@ func (hctx HandlerContext) ListSubscriptionsHandler(w http.ResponseWriter, r *ht
 	w.Write(body)
 }
 
-func ParseQueryValue(r *http.Request, w http.ResponseWriter, key string, i int64) (int64, bool) {
-	value := i
+func ParseQueryValue(r *http.Request, w http.ResponseWriter, key string, value int64) (int64, bool) {
 	valueStr := r.URL.Query().Get(key)
 	if valueStr != "" {
 		_, err := fmt.Sscanf(valueStr, "%d", &value)
@@ -143,5 +142,5 @@ func ParseQueryValue(r *http.Request, w http.ResponseWriter, key string, i int64
 			return 0, false
 		}
 	}
-	return i, true
+	return value, true
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/davidoram/webhookd/view"
 	"github.com/nsf/jsondiff"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -83,13 +84,26 @@ func TestListSubscriptionsHandler(t *testing.T) {
 	assert.Len(t, subs.Subscriptions, 0)
 
 	// Create a subscription
+	created := make([]view.Subscription, 0)
 	sub := createSubscription(t, hc)
+	created = append(created, sub)
 
 	// Make a request to list subscriptions, should be one
 	subs = listSubscriptions(t, hc)
 	assert.Len(t, subs.Subscriptions, 1)
 	assert.Equal(t, sub.ID, subs.Subscriptions[0].ID)
 
+	// Create a hundred subscriptions
+	for i := 0; i < 100; i++ {
+		created = append(created, createSubscription(t, hc))
+	}
+
+	// Make a request to list subscriptions, should return all created
+	subs = listSubscriptions(t, hc)
+	require.Equal(t, len(subs.Subscriptions), len(created))
+	for i := 0; i < len(created); i++ {
+		assert.Equal(t, created[i].ID, subs.Subscriptions[i].ID)
+	}
 }
 
 func createSubscription(t *testing.T, hc HandlerContext) view.Subscription {
@@ -120,7 +134,7 @@ func createSubscription(t *testing.T, hc HandlerContext) view.Subscription {
 }
 
 func listSubscriptions(t *testing.T, hc HandlerContext) view.SubscriptionCollection {
-	req, err := http.NewRequest("GET", "1/subscriptions?limit=100,offset=0", nil)
+	req, err := http.NewRequest("GET", "1/subscriptions?limit=10000&offset=0", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
