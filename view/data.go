@@ -32,8 +32,10 @@ type Destination struct {
 }
 
 type Webhook struct {
-	URL     string   `json:"url" valid:"url,required"`
-	Headers []string `json:"headers" valid:"string"`
+	URL string `json:"url" valid:"url,required"`
+	// Headers will be added to the HTTP request as headers. The key is the header name, the value is the header value.
+	// The key's will be mutated using the 'CanonicalHeaderKey' function from the 'net/http' package when they are sent
+	Headers map[string]string `json:"headers" valid:"string"`
 }
 
 type Source struct {
@@ -112,5 +114,6 @@ func NewSubscriptionFromJSON(id uuid.UUID, data []byte, createdAt, updatedAt tim
 	s.CreatedAt = createdAt
 	s.UpdatedAt = updatedAt
 	s.DeletedAt = null.NewTime(deletedAt.Time, deletedAt.Valid)
+	s.Active = !s.DeletedAt.Valid
 	return s, err
 }

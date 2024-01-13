@@ -15,6 +15,7 @@ import (
 	"github.com/davidoram/webhookd/core"
 	"github.com/davidoram/webhookd/view"
 	"github.com/google/uuid"
+	"github.com/jba/muxpatterns"
 )
 
 type HandlerContext struct {
@@ -22,7 +23,8 @@ type HandlerContext struct {
 }
 
 // PostSubscriptionHandler handles POST requests to create a new subscription
-// It takes a JSON body representing the subscription to create
+// It takes a JSON body representing the subscription to create.
+// If the subscription is created successfully, it returns a 201 Created response with the subscription in the body.
 func (hctx HandlerContext) PostSubscriptionHandler(w http.ResponseWriter, r *http.Request, ctx context.Context) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -55,7 +57,7 @@ func (hctx HandlerContext) PostSubscriptionHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Transform the view.Subscription into a core.Subscription
+	// Transform the view.Subscription into a core.Subscription, just to check that it is valid
 	csub, err := adapter.ViewToCoreAdapter(vsub)
 	if err != nil {
 		slog.Error("Error transforming subscription", slog.Any("error", err))
@@ -63,7 +65,7 @@ func (hctx HandlerContext) PostSubscriptionHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	err = core.InsertSubscription(ctx, hctx.Db, csub)
+	err = core.InsertSubscription(ctx, hctx.Db, vsub)
 	if err != nil {
 		slog.Error("Error inserting subscription", slog.Any("error", err))
 		http.Error(w, "Error inserting subscription", http.StatusInternalServerError)
@@ -89,6 +91,46 @@ func (hctx HandlerContext) PostSubscriptionHandler(w http.ResponseWriter, r *htt
 	w.Header().Set("Location", csub.ResourcePath())
 
 	w.WriteHeader(http.StatusCreated)
+	w.Write(body)
+}
+
+// ShowSubscriptionHandler handles GET requests to get a single subscription identified by id
+// If the subscription is found, it returns a 200 OK response with the subscription in the body.
+func (hctx HandlerContext) ShowSubscriptionHandler(w http.ResponseWriter, r *http.Request, ctx context.Context) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	idStr := muxpatterns.PathValue(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		slog.Error("error parsing URL param as UUID", slog.Any("error", err), slog.String("id", idStr))
+		http.Error(w, "Error parsing URL param as UUID", http.StatusBadRequest)
+		return
+	}
+
+	vsub, found, err := core.GetSubscriptionById(ctx, hctx.Db, id)
+	if err != nil {
+		slog.Error("error reading subscription", slog.Any("error", err))
+		http.Error(w, "Error reading subscription", http.StatusInternalServerError)
+		return
+	}
+	// If we didn't find the subscription, return a 404
+	if !found {
+		slog.Info("subscription not found", slog.Any("id", id))
+		http.Error(w, "Subscription not found", http.StatusNotFound)
+		return
+	}
+
+	body, err := json.Marshal(vsub)
+	if err != nil {
+		slog.Error("error marshalling subscription", slog.Any("error", err))
+		http.Error(w, "Error marshalling subscription", http.StatusInternalServerError)
+		return
+	}
+	slog.Info("subscription", slog.Any("id", vsub.ID), slog.Any("name", vsub.Name))
+	w.WriteHeader(http.StatusOK)
 	w.Write(body)
 }
 

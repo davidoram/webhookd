@@ -42,9 +42,9 @@ func TestUnmarshalSubscription(t *testing.T) {
 			"kind": "webhook",
 			"webhook": {
 				"url": "https://example.com/webhook",
-				"headers": [
-					"X-API-Key: 33139801-5796-4450-8de1-3d303cdb39f2"
-				]
+				"headers": {
+					"X-Api-Key": "33139801-5796-4450-8de1-3d303cdb39f2"
+				}
 			}
 		},
 		"source": [
@@ -82,7 +82,7 @@ func TestUnmarshalSubscription(t *testing.T) {
 	assert.Equal(t, true, s.Active)
 	assert.Equal(t, "webhook", s.Destination.Kind)
 	assert.Equal(t, "https://example.com/webhook", s.Destination.Webhook.URL)
-	assert.Equal(t, "X-API-Key: 33139801-5796-4450-8de1-3d303cdb39f2", s.Destination.Webhook.Headers[0])
+	assert.Equal(t, "33139801-5796-4450-8de1-3d303cdb39f2", s.Destination.Webhook.Headers["X-Api-Key"])
 	assert.Equal(t, 1, len(s.Destination.Webhook.Headers))
 	assert.Equal(t, "path.to.my.topic", s.Source[0].Topic)
 	assert.Equal(t, "transaction_type == 'credit'", s.Source[0].JmesFilters[0])

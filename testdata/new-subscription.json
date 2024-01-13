@@ -4,9 +4,9 @@
         "kind": "webhook",
         "webhook": {
             "url": "https://localhost:9090/",
-            "headers": [
-                "X-API-KEY: e2315fb8-fe95-4d1d-a553-dd34ad1ea4db"
-            ]
+            "headers": {
+                "X-Api-Key": "e2315fb8-fe95-4d1d-a553-dd34ad1ea4db"
+            }
         }
     },
     "source": [

@@ -19,7 +19,10 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/jba/muxpatterns" // Routing proposal extension to stdlib https://github.com/golang/go/issues/61410
+	// Routing proposal extension to go stdlib in go 1.22
+	// See: https://github.com/golang/go/issues/61410
+	//      https://benhoyt.com/writings/go-servemux-enhancements/
+	"github.com/jba/muxpatterns"
 )
 
 func main() {
@@ -77,6 +80,10 @@ func main() {
 	mux.HandleFunc("POST /1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		// Pass the context to the handler
 		hctx.PostSubscriptionHandler(w, r, ctx)
+	})
+	mux.HandleFunc("GET /1/subscriptions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		// Pass the context to the handler
+		hctx.ShowSubscriptionHandler(w, r, ctx)
 	})
 	mux.HandleFunc("GET /1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		// Pass the context to the handler

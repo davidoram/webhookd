@@ -50,12 +50,10 @@ func ViewToCoreAdapter(vSub view.Subscription) (core.Subscription, error) {
 		webhook.MaxRetries = vSub.Configuration.Retry.MaxRetries
 
 		// Convert the Headers
-		for _, header := range vSub.Destination.Webhook.Headers {
-			headerParts := strings.Split(header, ":")
-			if len(headerParts) != 2 {
-				return cSub, fmt.Errorf("invalid header format, '%s' should be in the format 'key:value'", header)
+		for key, values := range vSub.Destination.Webhook.Headers {
+			for _, value := range strings.Split(values, ";") {
+				webhook.Headers.Add(key, value)
 			}
-			webhook.Headers.Add(headerParts[0], headerParts[1])
 		}
 
 		// Set the retrier
@@ -111,9 +109,9 @@ func CoreToViewAdapter(cSub core.Subscription) (view.Subscription, error) {
 		wndest := cSub.Destination.(core.WebhookDestination)
 		vSub.Destination.Kind = "webhook"
 		vSub.Destination.Webhook.URL = wndest.URL
-		vSub.Destination.Webhook.Headers = []string{}
+		vSub.Destination.Webhook.Headers = map[string]string{}
 		for key, values := range wndest.Headers {
-			vSub.Destination.Webhook.Headers = append(vSub.Destination.Webhook.Headers, fmt.Sprintf("%s:%s", key, values[0]))
+			vSub.Destination.Webhook.Headers[key] = strings.Join(values, ";")
 		}
 	default:
 		return vSub, errors.New("invalid destination type")
