@@ -16,6 +16,7 @@ import (
 	"github.com/davidoram/webhookd/view"
 	"github.com/google/uuid"
 	"github.com/jba/muxpatterns"
+	"gopkg.in/guregu/null.v4"
 )
 
 type HandlerContext struct {
@@ -85,7 +86,7 @@ func (hctx HandlerContext) PostSubscriptionHandler(w http.ResponseWriter, r *htt
 		http.Error(w, "Error marshalling subscription", http.StatusInternalServerError)
 		return
 	}
-	slog.Info("Subscription added", slog.Any("id", vsub.ID), slog.String("name", vsub.Name))
+	slog.Info("subscription new", slog.Any("id", vsub.ID), slog.String("name", vsub.Name), slog.String("location", csub.ResourcePath()))
 
 	// Set the Location header to the URL of the newly created resource
 	w.Header().Set("Location", csub.ResourcePath())
@@ -129,7 +130,57 @@ func (hctx HandlerContext) ShowSubscriptionHandler(w http.ResponseWriter, r *htt
 		http.Error(w, "Error marshalling subscription", http.StatusInternalServerError)
 		return
 	}
-	slog.Info("subscription", slog.Any("id", vsub.ID), slog.Any("name", vsub.Name))
+	slog.Info("subscription show", slog.Any("id", vsub.ID), slog.Any("name", vsub.Name))
+	w.WriteHeader(http.StatusOK)
+	w.Write(body)
+}
+
+// DeleteSubscriptionHandler handles DELETE requests to remove a single subscription identified by id
+// If the subscription is found, it will (soft) delete it and return a 200 OK response with the subscription in the body.
+func (hctx HandlerContext) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request, ctx context.Context) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	idStr := muxpatterns.PathValue(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		slog.Error("error parsing URL param as UUID", slog.Any("error", err), slog.String("id", idStr))
+		http.Error(w, "Error parsing URL param as UUID", http.StatusBadRequest)
+		return
+	}
+
+	vsub, found, err := core.GetSubscriptionById(ctx, hctx.Db, id)
+	if err != nil {
+		slog.Error("error reading subscription", slog.Any("error", err))
+		http.Error(w, "Error reading subscription", http.StatusInternalServerError)
+		return
+	}
+	// If we didn't find the subscription, return a 404
+	if !found {
+		slog.Info("subscription not found", slog.Any("id", id))
+		http.Error(w, "Subscription not found", http.StatusNotFound)
+		return
+	}
+
+	// Is found, so mark as deleted in the database
+	now := time.Now().In(time.UTC)
+	vsub.DeletedAt = null.Time{sql.NullTime{Time: now, Valid: true}}
+	vsub.UpdatedAt = now
+	err = core.UpdateSubscription(ctx, hctx.Db, vsub)
+	if err != nil {
+		slog.Error("error updating subscription", slog.Any("error", err), slog.Any("id", id))
+		http.Error(w, "Error updating subscription", http.StatusInternalServerError)
+		return
+	}
+	body, err := json.Marshal(vsub)
+	if err != nil {
+		slog.Error("error marshalling subscription", slog.Any("error", err))
+		http.Error(w, "Error marshalling subscription", http.StatusInternalServerError)
+		return
+	}
+	slog.Info("subscription delete", slog.Any("id", vsub.ID), slog.Any("name", vsub.Name))
 	w.WriteHeader(http.StatusOK)
 	w.Write(body)
 }
@@ -168,7 +219,7 @@ func (hctx HandlerContext) ListSubscriptionsHandler(w http.ResponseWriter, r *ht
 		http.Error(w, "Error marshalling subscription", http.StatusInternalServerError)
 		return
 	}
-	slog.Info("List Subscriptions", slog.Any("offset", offset), slog.Any("limit", limit), slog.Any("subscriptions found", len(subs.Subscriptions)))
+	slog.Info("subscription list", slog.Any("offset", offset), slog.Any("limit", limit), slog.Any("count", len(subs.Subscriptions)))
 
 	w.WriteHeader(http.StatusOK)
 	w.Write(body)

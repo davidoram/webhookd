@@ -85,6 +85,10 @@ func main() {
 		// Pass the context to the handler
 		hctx.ShowSubscriptionHandler(w, r, ctx)
 	})
+	mux.HandleFunc("DELETE /1/subscriptions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		// Pass the context to the handler
+		hctx.DeleteSubscriptionHandler(w, r, ctx)
+	})
 	mux.HandleFunc("GET /1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		// Pass the context to the handler
 		hctx.ListSubscriptionsHandler(w, r, ctx)

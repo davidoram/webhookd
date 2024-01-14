@@ -4,23 +4,22 @@ https://github.com/confluentinc/confluent-kafka-go/tree/v1.4.0
 
 Provides the following functions:
 
-- Sources are Kafka topics
-- Registration includes 
-    - Callback url eg: https://my-website.com/path/to/endpoint
-    - Authentication for that endpoint:
-        - Token: http_header + token value
-    - Topics, list to subscribe to
-- Authorization
-    - Policy that specifys what payloads can be viewed from the topics subscribed to.
-- Retry mechanism
-- Rate limiting
-- Message batching
-- Message serialisation
-- Monitoring and logging
-- Error handling
-    - Deliver errors to clients
-    - System errors
-- Management API
+- [ ] Registration includes 
+    - [ ] Callback url eg: https://my-website.com/path/to/endpoint
+    - [ ] Authentication for that endpoint:
+        - [ ] Token: http_header + token value
+    - [ ] Topics, list to subscribe to
+- [ ] Authorization
+    - [ ] Policy that specifys what payloads can be viewed from the topics subscribed to.
+- [ ] Retry mechanism
+- [ ] Rate limiting
+- [ ] Message batching
+- [ ] Message serialisation
+- [ ] Monitoring and logging
+- [ ] Error handling
+    - [ ] Deliver errors to clients
+    - [ ] System errors
+- [ ] Management API
 
 # API
 

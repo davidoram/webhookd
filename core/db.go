@@ -27,7 +27,7 @@ func MigrateDB(ctx context.Context, db *sql.DB) error {
 }
 
 func InsertSubscription(ctx context.Context, db *sql.DB, vsub view.Subscription) error {
-	// Only insert the SubscriptionData into the database, the rest of the fields are stored in their own columns
+	// Only insert the SubscriptionData into the 'data' column, the rest of the fields are stored in their own columns
 	data, err := json.Marshal(vsub.SubscriptionData)
 	if err != nil {
 		return err
@@ -61,6 +61,19 @@ func GetSubscriptionById(ctx context.Context, db *sql.DB, id uuid.UUID) (vsub vi
 	// Could be either not found, or an error
 	err = rows.Err()
 	return view.Subscription{}, found, err
+}
+
+// UpdateSubscription updates the subscription in the database
+func UpdateSubscription(ctx context.Context, db *sql.DB, vsub view.Subscription) error {
+	// Only update the SubscriptionData into the 'data' column, the rest of the fields are stored in their own columns
+	data, err := json.Marshal(vsub.SubscriptionData)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `
+		UPDATE subscriptions SET data = ?, updated_at = ?, deleted_at = ? WHERE id = ?`,
+		data, vsub.UpdatedAt, vsub.DeletedAt, vsub.ID)
+	return err
 }
 
 // GetSubscriptionsUpdatedSince returns a list of subscriptions that have been updated since the specified time
