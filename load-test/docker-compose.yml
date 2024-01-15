@@ -30,6 +30,22 @@ services:
     depends_on:
       - zookeeper
 
+  webhookd:
+    image: davidoram/webhookd
+    networks:
+      - kafka-net
+    depends_on:
+      - kafka1
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/ping" ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+      start_interval: 5s
+
   csv-publish:
     image: davidoram/csv-publish
     networks:
@@ -37,7 +53,17 @@ services:
     depends_on:
       - kafka1
     volumes:
-      - ./load-test/data:/data
+      - ./data:/data
+
+  test-endpoint:
+    image: davidoram/test-endpoint
+    networks:
+      - kafka-net
+    depends_on:
+      webhookd:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
 
 networks:
   kafka-net:

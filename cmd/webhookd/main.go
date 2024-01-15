@@ -31,7 +31,7 @@ func main() {
 	defer slog.Info("webhookd exited")
 
 	// Parse command line arguments
-	dbURL := flag.String("db", "file:webhookd.db?vacuum=1", "URL connection to the SQLite database")
+	dbURL := flag.String("db", "file:/data/webhookd.db?vacuum=1", "URL connection to the SQLite database")
 	kafkaBootstrapServers := flag.String("kafka", "localhost:9092", "Kafka bootstrap servers")
 	pollingPeriod := flag.Duration("sub-poll", time.Second*10, "How long to wait between polling the database for changes to subscriptions, defaults to 10s")
 	httpAddress := flag.String("http-address", ":8080", "Host and port to start webserver on, defaults to ':8080'")
@@ -48,7 +48,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	slog.Info("db open ok")
+	slog.Info("db open ok", slog.String("url", *dbURL))
 
 	// Migrate the database
 	err = core.MigrateDB(ctx, db)
@@ -77,6 +77,13 @@ func main() {
 	// Start a web server to handle API requests, that will quit when the context is cancelled
 	hctx := web.HandlerContext{Db: db}
 	mux := muxpatterns.NewServeMux()
+	mux.HandleFunc("GET /ping", func(w http.ResponseWriter, r *http.Request) {
+		// Return a 200 OK
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("pong"))
+		slog.Info("GET /ping ok")
+	})
+
 	mux.HandleFunc("POST /1/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		// Pass the context to the handler
 		hctx.PostSubscriptionHandler(w, r, ctx)

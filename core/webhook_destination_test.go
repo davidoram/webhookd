@@ -3,8 +3,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -35,9 +33,6 @@ func TestSendToWebhook(t *testing.T) {
 	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -48,7 +43,7 @@ func TestSendToWebhook(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
 	err := s.Start(KafkaServers)
@@ -98,9 +93,6 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -111,7 +103,7 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
 	err := s.Start(KafkaServers)
@@ -165,9 +157,6 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -178,7 +167,7 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
 	err := s.Start(KafkaServers)
@@ -232,9 +221,6 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -245,7 +231,7 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	tl := NewTestListener(t, SubscriptionEventBatchSentNACK, done)
 	s.AddListener(tl)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)

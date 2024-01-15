@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -31,9 +29,6 @@ func TestOneMessage(t *testing.T) {
 	defer producer.Close()
 
 	dest := core.NewTestDest(t)
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := core.Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -44,7 +39,7 @@ func TestOneMessage(t *testing.T) {
 			BatchSize: 1,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
 	err := s.Start(core.KafkaServers)
@@ -76,9 +71,6 @@ func TestMultipleBatches(t *testing.T) {
 	defer producer.Close()
 
 	dest := core.NewTestDest(t)
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := core.Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -89,7 +81,7 @@ func TestMultipleBatches(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
 	err := s.Start(core.KafkaServers)

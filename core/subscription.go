@@ -25,7 +25,6 @@ type Subscription struct {
 	// Runtime elements
 	Destination Destination
 	consumer    *kafka.Consumer
-	logger      *slog.Logger
 	listeners   []SubscriptionListener
 }
 
@@ -33,7 +32,7 @@ var ErrSendFailed = errors.New("send transactionally failed")
 var ErrContextCancelled = errors.New("context cancelled")
 
 func NewSubscription() Subscription {
-	return Subscription{logger: slog.Default()}
+	return Subscription{}
 }
 
 // // NewSubscriptionFromJSON creates a new Subscription from a JSON byte array, it validates the JSON
@@ -72,11 +71,6 @@ func NewSubscription() Subscription {
 
 func (s Subscription) IsActive() bool {
 	return !s.DeletedAt.Valid
-}
-
-func (s Subscription) WithLogger(logger *slog.Logger) Subscription {
-	s.logger = logger
-	return s
 }
 
 // // MarshallForDatabase returns the subscription as a JSON byte array, in the format suitable for storing in the database
@@ -129,13 +123,13 @@ func (s *Subscription) Start(kafkaServers string) error {
 	if err != nil {
 		return err
 	}
-	s.logger.Info("start consumer", slog.String("bootstrap.servers", kafkaServers), slog.String("consumer_id", s.ID.String()), slog.String("group_id", s.GroupID()), slog.String("topic", s.Topic.Topic))
+	slog.Info("start consumer", slog.String("bootstrap.servers", kafkaServers), slog.Any("consumer_id", s.ID), slog.String("group_id", s.GroupID()), slog.String("topic", s.Topic.Topic))
 	return s.consumer.SubscribeTopics([]string{s.Topic.Topic}, nil)
 }
 
 func (s *Subscription) Consume(ctx context.Context) {
-	s.logger.Info("consume loop started", slog.String("consumer_id", s.ID.String()))
-	defer s.logger.Info("consume loop finished", slog.String("consumer_id", s.ID.String()))
+	slog.Info("consume loop started", slog.String("consumer_id", s.ID.String()))
+	defer slog.Info("consume loop finished", slog.String("consumer_id", s.ID.String()))
 	for l := range s.listeners {
 		s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventStart, Subscription: s})
 	}
@@ -146,7 +140,7 @@ func (s *Subscription) Consume(ctx context.Context) {
 	for run {
 		select {
 		case <-ctx.Done():
-			s.logger.Info("consume loop terminating", slog.String("consumer_id", s.ID.String()))
+			slog.Info("consume loop terminating", slog.String("consumer_id", s.ID.String()))
 			run = false
 		case <-pushTicker.C:
 			if len(batch) > 0 {
@@ -168,7 +162,7 @@ func (s *Subscription) Consume(ctx context.Context) {
 
 			switch e := ev.(type) {
 			case *kafka.Message:
-				// s.logger.Debug("received msg", slog.String("consumer_id", s.ID.String()), slog.String("topic", *e.TopicPartition.Topic), slog.String("key", string(e.Key)))
+				// slog.Debug("received msg", slog.String("consumer_id", s.ID.String()), slog.String("topic", *e.TopicPartition.Topic), slog.String("key", string(e.Key)))
 				batch = append(batch, e)
 				if len(batch) < s.Config.BatchSize {
 					continue
@@ -189,13 +183,13 @@ func (s *Subscription) Consume(ctx context.Context) {
 				// the application if all brokers are down.
 				if e.Code() == kafka.ErrAllBrokersDown {
 					run = false
-					s.logger.Info("consumer existing, all brokers down", slog.Any("kafka_error", ev.(kafka.Error)))
+					slog.Info("consumer existing, all brokers down", slog.Any("kafka_error", ev.(kafka.Error)))
 				} else {
-					s.logger.Debug("ignore", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_error", ev.(kafka.Error)))
+					slog.Debug("ignore", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_error", ev.(kafka.Error)))
 				}
 
 			default:
-				s.logger.Debug("ignore kafka event", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_event", ev.(kafka.Error)))
+				slog.Debug("ignore kafka event", slog.String("consumer_id", s.ID.String()), slog.Any("kafka_event", ev.(kafka.Error)))
 			}
 		}
 	}
@@ -213,7 +207,7 @@ func (s *Subscription) sendBatch(ctx context.Context, batch []*kafka.Message) er
 		for l := range s.listeners {
 			s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventError, Subscription: s, Error: err})
 		}
-		s.logger.Info("consumer stopping, send to destination failed", slog.Any("error", err))
+		slog.Info("consumer stopping, send to destination failed", slog.Any("error", err))
 	} else {
 		for _, msg := range batch {
 			if _, err = s.consumer.CommitMessage(msg); err != nil {
@@ -224,7 +218,7 @@ func (s *Subscription) sendBatch(ctx context.Context, batch []*kafka.Message) er
 			for l := range s.listeners {
 				s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventError, Subscription: s, Error: err})
 			}
-			s.logger.Info("consumer stopping, unable to store offset", slog.Any("error", err))
+			slog.Info("consumer stopping, unable to store offset", slog.Any("error", err))
 		}
 	}
 	return err
@@ -242,7 +236,7 @@ func (s *Subscription) SendTransactionally(ctx context.Context, msgs []*kafka.Me
 			for l := range s.listeners {
 				s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventBatchSentACK, Subscription: s})
 			}
-			s.logger.Info("consumer sent batch ok", slog.String("consumer_id", s.ID.String()))
+			slog.Info("consumer sent batch ok", slog.String("consumer_id", s.ID.String()))
 			return nil
 		}
 		for l := range s.listeners {

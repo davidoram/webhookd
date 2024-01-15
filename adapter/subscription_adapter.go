@@ -84,7 +84,7 @@ func ViewToCoreAdapter(vSub view.Subscription) (core.Subscription, error) {
 
 // CoreToViewAdapter converts a core.Subscription to a view.Subscription
 func CoreToViewAdapter(cSub core.Subscription) (view.Subscription, error) {
-	vSub := view.Subscription{}
+	vSub := view.NewSubscription()
 	vSub.ID = cSub.ID
 	vSub.CreatedAt = cSub.CreatedAt
 	vSub.UpdatedAt = cSub.UpdatedAt

@@ -6,7 +6,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"runtime/pprof"
 	"strings"
@@ -126,7 +126,7 @@ func logProducerEvents(ctx context.Context, producer *kafka.Producer) {
 		select {
 		case le, ok := <-producer.Logs():
 			if ok {
-				log.Printf("producer log %s", le.String())
+				slog.Info("producer log", slog.String("event", le.String()))
 			}
 
 		case <-ctx.Done():
@@ -143,14 +143,14 @@ func logDeliveryReports(ctx context.Context, producer *kafka.Producer) {
 			case *kafka.Message:
 				m := ev
 				if m.TopicPartition.Error != nil {
-					log.Printf("message delivery failed key:%s topic:%s error:%s\n",
-						string(m.Key),
-						*m.TopicPartition.Topic,
-						m.TopicPartition.Error)
+					slog.Info("message delivery failed",
+						slog.String("key", string(m.Key)),
+						slog.String("topic", *m.TopicPartition.Topic),
+						slog.String("error", m.TopicPartition.Error.Error()))
 				}
 			default:
 				if e != nil {
-					log.Printf("Event ignored %v", e)
+					slog.Info("Event ignored", slog.String("event", e.String()))
 				}
 			}
 		case <-ctx.Done():
@@ -176,16 +176,16 @@ func publishToKafka(producer *kafka.Producer, messages []Message) error {
 		// Produce the message to Kafka
 		if err := producer.Produce(kafkaMessage, nil); err != nil {
 			if err.(kafka.Error).Code() == kafka.ErrQueueFull {
-				log.Println("Queue full, pausing and retrying...")
+				slog.Info("Queue full, pausing and retrying...")
 				// If the queue is full, wait for 1 second and try again
 				time.Sleep(1 * time.Second)
 				if err := producer.Produce(kafkaMessage, nil); err != nil {
-					log.Printf("Retry failed: %s", err)
+					slog.Info("Retry failed", slog.String("error", err.Error()))
 					return err
 				}
-				log.Println("... retried ok")
+				slog.Info("... retried ok")
 			} else {
-				log.Printf("Kafka produce error: %s", err)
+				slog.Info("Kafka produce error", slog.String("error", err.Error()))
 				return err
 			}
 		}
@@ -204,7 +204,7 @@ func fetchMessages(db *sql.DB, offsetMillis int64) ([]Message, error) {
 	LIMIT 100
 `, offsetMillis)
 	if err != nil {
-		log.Printf("Error querying the database: %s", err)
+		slog.Info("Error querying the database", slog.String("error", err.Error()))
 		return messagesToPublish, err
 	}
 	defer rows.Close()
@@ -219,7 +219,7 @@ func fetchMessages(db *sql.DB, offsetMillis int64) ([]Message, error) {
 			&message.PublishOffsetMillis,
 			&message.PublishedAt,
 		); err != nil {
-			log.Printf("Error scanning rows: %s", err)
+			slog.Info("Error scanning rows", slog.String("error", err.Error()))
 			return messagesToPublish, err
 		}
 
@@ -230,49 +230,54 @@ func fetchMessages(db *sql.DB, offsetMillis int64) ([]Message, error) {
 
 func main() {
 	ctx := context.Background()
-	// Read dbFile, csvFile, and kafkaBootstrapServers from command line arguments
-	dbFile := flag.String("db", "input.db", "Path to the database file")
-	csvFile := flag.String("csv", "input.csv", "Path to the CSV file")
+	// Read dbURL, csvFile, and kafkaBootstrapServers from command line arguments
+	dbURL := flag.String("db", "file:/data/csv-publish.db", "Path to the database file, defaults to /data/csv-publish.db")
+	csvFile := flag.String("csv", "/data/input.csv", "Path to the CSV file, defaults to /data/input.csv")
 	kafkaBootstrapServers := flag.String("kafka", "localhost:9092", "Kafka bootstrap servers")
 	profile := flag.Bool("profile", false, "Enable profiling")
+	profileFile := flag.String("profile-file", "/data/csv-publish-cpu.prof", "Profiling output file, defaults to /data/csv-publish-cpu.prof")
 
 	flag.Parse()
-	log.Println("Started")
+	slog.Info("csv-publish started")
 
 	// Start profiling if enabled
 	if *profile {
-		f, err := os.Create("cpu.prof")
+		f, err := os.Create(*profileFile)
 		if err != nil {
-			log.Fatalf("Error creating 'cpu.prof' file: %s", err)
+			slog.Error("Error creating profiling file", slog.Any("error", err), slog.String("file", *profileFile))
+			os.Exit(1)
 		}
 		defer f.Close()
 
 		if err := pprof.StartCPUProfile(f); err != nil {
-			log.Fatalf("Error starting profile: %s", err)
+			slog.Error("Error starting profile", slog.String("error", err.Error()))
+			os.Exit(1)
 		}
 		defer pprof.StopCPUProfile()
-		log.Println("Profiling saved to 'cpu.prof'")
+		slog.Info("Profiling saved", slog.String("file", *profileFile))
 	}
 
 	// Open the SQLite database
-	db, err := sql.Open("sqlite3", *dbFile)
+	db, err := sql.Open("sqlite3", *dbURL)
 	if err != nil {
-		log.Printf("Error opening the database: %s", err)
+		slog.Info("Error opening the database", slog.String("error", err.Error()))
 		return
 	}
+	slog.Info("db open ok", slog.String("url", *dbURL))
+
 	defer db.Close()
 
 	// Populate the SQLite database
 	total, topics, err := populateDatabase(db, *csvFile)
 	if err != nil {
-		log.Printf("Error populating the database: %s", err)
+		slog.Info("Error populating the database: %s", err)
 		return
 	}
-	log.Printf("Loaded %d messages for publishing, in %d topics", total, len(topics))
-	log.Printf("Topics: %s", strings.Join(topics, ", "))
+	slog.Info("loaded messages for publishing", slog.Int("total_msgs", total), slog.Int("total_topics", len(topics)))
+	slog.Info("topics", slog.String("topics", strings.Join(topics, ", ")))
 
 	// Set up Kafka producer configuration
-	log.Printf("Connecting to Kafka: %s", *kafkaBootstrapServers)
+	slog.Info("Connecting to Kafka", slog.String("servers", *kafkaBootstrapServers))
 	producer, err := kafka.NewProducer(&kafka.ConfigMap{
 		"client.id":              "csv-publish",
 		"bootstrap.servers":      *kafkaBootstrapServers,
@@ -285,7 +290,7 @@ func main() {
 		//"debug":                  "broker,topic,msg", // To see all debug messages, uncomment this line
 	})
 	if err != nil {
-		log.Printf("Error creating Kafka producer: %s", err)
+		slog.Error("Error creating Kafka producer", slog.Any("error", err))
 		return
 	}
 
@@ -295,9 +300,9 @@ func main() {
 
 	// Wait for message deliveries before shutting down producer
 	defer func() {
-		log.Println("Flushing producer")
+		slog.Info("Flushing producer")
 		unpublished := producer.Flush(15 * 1000) // 15 seconds
-		log.Printf("Closing producer, unpublished messages: %d", unpublished)
+		slog.Info("Closing producer", slog.Int("unpublished_messages", unpublished))
 		producer.Close()
 	}()
 
@@ -313,31 +318,31 @@ func main() {
 		// Fetch 100 rows where published_at is null and NOW() < start_time + publish_offset_millis
 		messagesToPublish, err := fetchMessages(db, offsetMillis)
 		if err != nil {
-			log.Printf("Error fetchMessages: %s", err)
+			slog.Error("Error fetchMessages", slog.Any("error", err))
 			return
 		}
 
 		// Publish messages to Kafka
 		if err := publishToKafka(producer, messagesToPublish); err != nil {
-			log.Printf("Error publishing messages to Kafka: %s", err)
+			slog.Info("Error publishing messages to Kafka", slog.Any("error", err))
 			return
 		}
 
 		// Update published_at for the messages
 		if err := markMessagesPublished(db, messagesToPublish, offsetTime); err != nil {
-			log.Printf("Error marking as published: %s", err)
+			slog.Info("Error marking as published", slog.Any("error", err))
 			return
 		}
 
 		// Count how many rows remain unpublished, ie: published_at is null
 		unpublishedRowsCount, err := countUnpublished(db)
 		if err != nil {
-			log.Printf("Error counting unpublished: %s", err)
+			slog.Info("Error counting unpublished", slog.Any("error", err))
 			return
 		}
 		if time.Now().After(nextLogTime) {
 
-			log.Printf("Published %d messages from total %d", total-unpublishedRowsCount, total)
+			slog.Info("updat", slog.Int("published", total-unpublishedRowsCount), slog.Int("total", total))
 			nextLogTime = time.Now().Add(10 * time.Second)
 		}
 		if len(messagesToPublish) == 0 {
@@ -349,13 +354,13 @@ func main() {
 			break
 		}
 	}
-	log.Println("Finished")
+	slog.Info("Finished")
 }
 
 func countUnpublished(db *sql.DB) (int, error) {
 	var unpublishedRowsCount int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM messages WHERE published_at IS NULL`).Scan(&unpublishedRowsCount); err != nil {
-		log.Printf("Error querying the database: %s", err)
+		slog.Error("Error querying the database", slog.Any("error", err))
 		return 0, err
 	}
 	return unpublishedRowsCount, nil

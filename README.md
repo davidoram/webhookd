@@ -21,6 +21,15 @@ Provides the following functions:
     - [ ] System errors
 - [ ] Management API
 
+# Load test
+
+```
+make clean dockerbuild
+build/csv-generate -csv load-test/data/input.csv -duration 1m -rows 1000 -topics 3
+make load-test-setup
+```
+
+
 # API
 
 `POST 1/Subscription`

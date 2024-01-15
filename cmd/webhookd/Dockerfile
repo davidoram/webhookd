@@ -19,7 +19,7 @@ RUN cd cmd/webhookd && \
 FROM alpine:latest
 
 # Install SQLite
-RUN apk --no-cache add sqlite
+RUN apk --no-cache add sqlite curl
 
 # Set the working directory in the container
 WORKDIR /app

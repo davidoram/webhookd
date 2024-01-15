@@ -30,7 +30,8 @@ install-librdkafka:
 	rm -rf librdkafka
 
 clean:
-	rm -rf build
+	rm -rf build load-test/data
+	mkdir -p load-test/data
 
 build: 
 	mkdir -p build 
@@ -39,11 +40,15 @@ build:
 	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/csv-publish -tags=dynamic cmd/csv-publish/*.go
 	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/test-endpoint -tags=dynamic cmd/test-endpoint/*.go
 
-dockerbuild:
+dockerbuild-webhookd:
 	docker build --progress=plain -t davidoram/webhookd -f cmd/webhookd/Dockerfile .
+dockerbuild-csv-generate:
 	docker build --progress=plain -t davidoram/csv-generate -f cmd/csv-generate/Dockerfile .
+dockerbuild-csv-publish:
 	docker build --progress=plain -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
+dockerbuild-test-endpoint:
 	docker build --progress=plain -t davidoram/test-endpoint -f cmd/test-endpoint/Dockerfile .
+dockerbuild: dockerbuild-webhookd dockerbuild-csv-generate dockerbuild-csv-publish dockerbuild-test-endpoint
 	
 load-test-build: build
 	docker build -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
