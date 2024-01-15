@@ -37,11 +37,13 @@ build:
 	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/webhookd -tags=dynamic cmd/webhookd/*.go
 	go build -o build/csv-generate -tags=dynamic cmd/csv-generate/*.go
 	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/csv-publish -tags=dynamic cmd/csv-publish/*.go
+	CGO_ENABLED=1 CGO_LDFLAGS="-L/usr/local" go build -o build/test-endpoint -tags=dynamic cmd/test-endpoint/*.go
 
 dockerbuild:
-	docker build -t davidoram/webhookd -f cmd/webhookd/Dockerfile .
-	docker build -t davidoram/csv-generate -f cmd/csv-generate/Dockerfile .
-	docker build -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
+	docker build --progress=plain -t davidoram/webhookd -f cmd/webhookd/Dockerfile .
+	docker build --progress=plain -t davidoram/csv-generate -f cmd/csv-generate/Dockerfile .
+	docker build --progress=plain -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
+	docker build --progress=plain -t davidoram/test-endpoint -f cmd/test-endpoint/Dockerfile .
 	
 load-test-build: build
 	docker build -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .

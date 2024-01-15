@@ -39,7 +39,9 @@ func (wh WebhookDestination) WithClient(client *http.Client) WebhookDestination 
 
 // Send messages and return if the desination has accepted the messages, and is ready for the next batch
 // Will be called repeatedly with the same messages until the Destination returns nil to indicate that
-// the destination has accepted the messages, and is ready to receive the next batch
+// the destination has accepted the messages, and is ready to receive the next batch.
+// Expects the reciever to accept a POST request with a JSON body of the form described by core.MessageBatch
+// and interprets a 200 (OK), or 201 (Created) as meaning that the reciever has accepted the messages.
 func (wh WebhookDestination) Send(ctx context.Context, msgs []*kafka.Message) error {
 	batch := encode(msgs)
 	buf, err := json.Marshal(batch)
@@ -71,7 +73,7 @@ func (wh WebhookDestination) Send(ctx context.Context, msgs []*kafka.Message) er
 				continue
 			}
 			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
+			if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 				delay := wh.Retry.RetryIn(i, wh.MaxRetries)
 				log.Printf("Webhook returned status code %s, delaying for %s", resp.Status, delay.String())
 				time.Sleep(delay)

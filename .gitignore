@@ -1,4 +1,4 @@
 build/
 *.csv
 cpu.prof
-input.db
+*.db
