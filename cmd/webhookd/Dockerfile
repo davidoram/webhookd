@@ -30,5 +30,5 @@ COPY --from=builder /app/webhookd /app/webhookd
 # Specify the entry point and default command to run the application
 ENTRYPOINT ["/app/webhookd"]
 
-# By default specify SQLite database files on external volume /data
-CMD ["-db", "file:/data/webhookd.db?vacuum=1"]
+# Expose the default port for the application
+EXPOSE 8080

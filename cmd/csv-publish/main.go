@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/davidoram/webhookd/core"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -150,6 +151,10 @@ func logDeliveryReports(ctx context.Context, producer *kafka.Producer) {
 				}
 			default:
 				if e != nil {
+					if ev.(kafka.Error).Code() == kafka.ErrAllBrokersDown {
+						slog.Error("All brokers down", slog.String("error", ev.(kafka.Error).Error()))
+						os.Exit(1)
+					}
 					slog.Info("Event ignored", slog.String("event", e.String()))
 				}
 			}
@@ -239,6 +244,19 @@ func main() {
 
 	flag.Parse()
 	slog.Info("csv-publish started")
+
+	// Wait for Kafka to be available
+	connected := core.TestConnection(*kafkaBootstrapServers)
+	waitUntil := time.Now().Add(60 * time.Second)
+	for !connected && time.Now().Before(waitUntil) {
+		slog.Info("Waiting for Kafka to be available", slog.String("servers", *kafkaBootstrapServers))
+		time.Sleep(5 * time.Second)
+		connected = core.TestConnection(*kafkaBootstrapServers)
+	}
+	if !connected {
+		slog.Error("Kafka not available", slog.String("servers", *kafkaBootstrapServers))
+		os.Exit(1)
+	}
 
 	// Start profiling if enabled
 	if *profile {

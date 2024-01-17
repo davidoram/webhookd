@@ -30,3 +30,6 @@ COPY --from=builder /app/test-endpoint /app/test-endpoint
 
 # Specify the entry point and default command to run the application
 ENTRYPOINT ["/app/test-endpoint"]
+
+# Expose the default port for the application
+EXPOSE 8081

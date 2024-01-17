@@ -68,7 +68,7 @@ func main() {
 	// start the subscription manager in a goroutine
 	go manager.Start(ctx, subChanges)
 	defer manager.Close()
-	slog.Info("started subscription manager")
+	slog.Info("started subscription manager", slog.String("kafka", *kafkaBootstrapServers))
 
 	// Start a goroutine that will poll the database for changes to the subscriptions
 	go GenerateSubscriptionChanges(ctx, db, subChanges, *pollingPeriod)

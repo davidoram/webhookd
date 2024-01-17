@@ -1,6 +1,7 @@
 version: '3'
 services:
   zookeeper:
+    hostname: zookeeper
     platform: linux/amd64
     image: wurstmeister/zookeeper:3.4.6
     ports:
@@ -14,6 +15,7 @@ services:
       ZOO_SERVERS: server.1=zookeeper:2888:3888
 
   kafka1:
+    hostname: kafka1
     platform: linux/amd64
     image: wurstmeister/kafka:0.10.0.1
     ports:
@@ -31,6 +33,7 @@ services:
       - zookeeper
 
   webhookd:
+    hostname: webhookd
     image: davidoram/webhookd
     networks:
       - kafka-net
@@ -45,6 +48,16 @@ services:
       retries: 3
       start_period: 15s
       start_interval: 5s
+    entrypoint:
+      - /app/webhookd
+      - -db
+      - file:/data/webhookd.db?vacuum=1
+      - -kafka
+      - kafka1:9092
+    ports:
+      - "8080:8080"
+    expose:
+      - "8080"
 
   csv-publish:
     image: davidoram/csv-publish
@@ -54,8 +67,17 @@ services:
       - kafka1
     volumes:
       - ./data:/data
+    entrypoint:
+      - /app/csv-publish
+      - -csv
+      - /data/input.csv
+      - -db
+      - file:/data/csv-publish.db?vacuum=1
+      - -kafka
+      - kafka1:9092
 
   test-endpoint:
+    hostname: test-endpoint
     image: davidoram/test-endpoint
     networks:
       - kafka-net
@@ -64,6 +86,18 @@ services:
         condition: service_healthy
     volumes:
       - ./data:/data
+    entrypoint:
+      - /app/test-endpoint
+      - -db
+      - file:/data/test-endpoint.db?vacuum=1
+      - -http-address
+      - test-endpoint:8081
+      - -webhookd-endpoint
+      - http://webhookd:8080
+    ports:
+      - "8081:8081"
+    expose:
+      - "8081"
 
 networks:
   kafka-net:

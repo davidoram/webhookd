@@ -29,6 +29,3 @@ COPY --from=builder /app/csv-publish /app/csv-publish
 
 # Specify the entry point and default command to run the application
 ENTRYPOINT ["/app/csv-publish"]
-
-# Allow specifying CSV and SQLite database files on the /data external volume
-CMD ["-csv", "/data/input.csv", "-db", "/data/input.db"]

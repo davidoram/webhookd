@@ -29,5 +29,3 @@ COPY --from=builder /app/csv-generate /app/csv-generate
 # Specify the entry point and default command to run the application
 ENTRYPOINT ["/app/csv-generate"]
 
-# Allow specifying CSV file on the /data external volume
-CMD ["-csv", "/data/input.csv"]

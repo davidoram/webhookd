@@ -48,9 +48,9 @@ func main() {
 	defer slog.Info("test-endpoint exited")
 
 	// Parse command line arguments
-	dbURL := flag.String("db", "file:test-endpoint.db?vacuum=1", "URL connection to the SQLite database")
+	dbURL := flag.String("db", "file:/data/test-endpoint.db?vacuum=1", "URL connection to the SQLite database")
 	httpAddress := flag.String("http-address", ":8081", "Host and port to start webserver on, defaults to ':8081'")
-	webhookdAddress := flag.String("webhookd-server", "http://webhookd:8080", "Host and port of the webhookd server, defaults to 'http://webhookd:8080'")
+	webhookdAddress := flag.String("webhookd-endpoint", "http://webhookd:8080", "Host and port of the webhookd server, defaults to 'http://webhookd:8080'")
 	topics := flag.Int("topics", 3, "Subscribe to 'topic.1,topic.2,topic.3' where '3' can be replaced by any number of topics, default is 3")
 	flag.Parse()
 
