@@ -44,19 +44,14 @@ type Source struct {
 }
 
 type Configuration struct {
-	Batching    Batching    `json:"batching" valid:"required"`
-	PayloadSize PayloadSize `json:"payload_size" valid:"-"`
-	Retry       Retry       `json:"retry" valid:"-"`
-	Alerting    Alerting    `json:"alerting" valid:"-"`
+	Batching Batching `json:"batching" valid:"required"`
+	Retry    Retry    `json:"retry" valid:"-"`
+	Alerting Alerting `json:"alerting" valid:"-"`
 }
 
 type Batching struct {
 	MaxBatchSize            int `json:"max_batch_size" valid:"type(int),range(1|1000)"`
 	MaxBatchIntervalSeconds int `json:"max_batch_interval_seconds" valid:"type(int),range(1|300)"`
-}
-
-type PayloadSize struct {
-	MaxPayloadSizeKb int `json:"max_payload_size_kb" valid:"type(int),range(1|5000)"`
 }
 
 type Retry struct {
@@ -84,9 +79,6 @@ func NewSubscription() Subscription {
 				Batching: Batching{
 					MaxBatchSize:            50,
 					MaxBatchIntervalSeconds: 30,
-				},
-				PayloadSize: PayloadSize{
-					MaxPayloadSizeKb: 1024,
 				},
 				Retry: Retry{
 					MaxRetries:     3,

@@ -68,29 +68,36 @@ type BatchEvent struct {
 	Messages []*kafka.Message
 }
 
+var (
+	DefaultTest *testing.T
+)
+
 func NewTestDest(t *testing.T) *TestDestination {
 	td := TestDestination{
 		t:       t,
 		Batches: make([][]*kafka.Message, 0),
 		Events:  make(chan BatchEvent),
 	}
+	if t == nil {
+		td.t = DefaultTest
+	}
 	td.SendOK = func(_ *TestDestination, _ []*kafka.Message) bool { return true }
 	return &td
 }
 
-func (wh *TestDestination) Send(ctx context.Context, msgs []*kafka.Message) error {
+func (td *TestDestination) Send(ctx context.Context, msgs []*kafka.Message) error {
 	// Only save the messages if SendOK is true
-	if !wh.SendOK(wh, msgs) {
-		wh.t.Logf("TestDestination received batch %d with %d messages, ACK failed", len(wh.Batches), len(msgs))
+	if !td.SendOK(td, msgs) {
+		td.t.Logf("TestDestination received batch %d with %d messages, ACK failed", len(td.Batches), len(msgs))
 		return fmt.Errorf("TestDestination NACK")
 	}
-	wh.t.Logf("TestDestination received batch %d with %d messages, ACK ok", len(wh.Batches), len(msgs))
-	wh.Events <- BatchEvent{Index: len(wh.Batches), Messages: msgs}
-	wh.Batches = append(wh.Batches, msgs)
+	td.t.Logf("TestDestination received batch %d with %d messages, ACK ok", len(td.Batches), len(msgs))
+	td.Events <- BatchEvent{Index: len(td.Batches), Messages: msgs}
+	td.Batches = append(td.Batches, msgs)
 	return nil
 }
 
-func (wh *TestDestination) TypeName() string {
+func (td *TestDestination) TypeName() string {
 	return "test_destination"
 }
 

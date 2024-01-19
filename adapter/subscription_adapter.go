@@ -42,6 +42,10 @@ func ViewToCoreAdapter(vSub view.Subscription) (core.Subscription, error) {
 	cSub.Config = core.Config{}
 	cSub.Config.MaxWait = time.Duration(vSub.Configuration.Batching.MaxBatchIntervalSeconds) * time.Second
 	cSub.Config.BatchSize = vSub.Configuration.Batching.MaxBatchSize
+	cSub.Config.Alerting = core.Alerting{
+		AlertChannel: vSub.Configuration.Alerting.AlertChannel,
+		AlertEmails:  vSub.Configuration.Alerting.AlertEmails,
+	}
 
 	// Convert the Destination
 	switch vSub.Destination.Kind {
@@ -76,6 +80,8 @@ func ViewToCoreAdapter(vSub view.Subscription) (core.Subscription, error) {
 		}
 
 		cSub.Destination = webhook
+	case "test_destination": // Used by test cases only
+		cSub.Destination = core.NewTestDest(nil)
 	default:
 		return cSub, errors.New("invalid destination kind")
 	}
@@ -102,6 +108,8 @@ func CoreToViewAdapter(cSub core.Subscription) (view.Subscription, error) {
 	}
 	vSub.Configuration.Batching.MaxBatchIntervalSeconds = int(cSub.Config.MaxWait.Seconds())
 	vSub.Configuration.Batching.MaxBatchSize = cSub.Config.BatchSize
+	vSub.Configuration.Alerting.AlertChannel = cSub.Config.Alerting.AlertChannel
+	vSub.Configuration.Alerting.AlertEmails = cSub.Config.Alerting.AlertEmails
 
 	// Convert the Destination
 	switch cSub.Destination.TypeName() {
@@ -113,8 +121,10 @@ func CoreToViewAdapter(cSub core.Subscription) (view.Subscription, error) {
 		for key, values := range wndest.Headers {
 			vSub.Destination.Webhook.Headers[key] = strings.Join(values, ";")
 		}
+	case "test_destination": // Used by test cases only
+		vSub.Destination.Kind = "test_destination"
 	default:
-		return vSub, errors.New("invalid destination type")
+		return vSub, fmt.Errorf("invalid destination type: '%s'", cSub.Destination.TypeName())
 	}
 
 	// Convert the Retry

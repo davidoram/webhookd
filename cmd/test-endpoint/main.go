@@ -141,9 +141,6 @@ func main() {
 						MaxBatchSize:            50,
 						MaxBatchIntervalSeconds: 10,
 					},
-					PayloadSize: view.PayloadSize{
-						MaxPayloadSizeKb: 1024,
-					},
 					Retry: view.Retry{
 						MaxRetries:     3,
 						RetryAlgorithm: "exponential_backoff",

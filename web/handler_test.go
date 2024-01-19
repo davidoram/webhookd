@@ -65,11 +65,21 @@ func TestPostSubscriptionHandlerResponse(t *testing.T) {
 					status, http.StatusCreated)
 			}
 
+			actual := rr.Body.Bytes()
+
+			// Remove fields that we know will be different
+			for _, f := range []string{"deleted_at", "updated_at", "created_at", "id"} {
+				actual, err = sjson.DeleteBytes(actual, f)
+				assert.NoError(t, err)
+				expected, err = sjson.DeleteBytes(expected, f)
+				assert.NoError(t, err)
+			}
+
 			// Check that the response is a superset of the expected response
 			opts := jsondiff.DefaultJSONOptions()
-			if diff, diffStr := jsondiff.Compare(rr.Body.Bytes(), expected, &opts); diff != jsondiff.SupersetMatch {
+			if diff, diffStr := jsondiff.Compare(actual, expected, &opts); diff != jsondiff.FullMatch {
 				t.Logf("Expected: %s", expected)
-				t.Logf("Actual: %s", rr.Body.String())
+				t.Logf("Actual: %s", actual)
 				t.Logf("Difference: %s", diffStr)
 				t.Logf("DifferenceType: %s", diff)
 				t.Fail()

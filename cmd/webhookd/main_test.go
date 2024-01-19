@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/davidoram/webhookd/adapter"
 	"github.com/davidoram/webhookd/core"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -62,34 +64,21 @@ func TestOneMessage(t *testing.T) {
 }
 
 func TestMultipleBatches(t *testing.T) {
-	batchSize := 10
-
 	require.True(t, core.TestConnection(core.KafkaServers))
 
-	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := core.TestProducer(t)
+	topic, producer := NewTestProducer(t)
 	defer producer.Close()
 
 	dest := core.NewTestDest(t)
-	s := core.Subscription{
-		Name: "sub-1",
-		ID:   uuid.New(),
-		Topic: core.Topic{
-			Topic: topic,
-		},
-		Config: core.Config{
-			BatchSize: batchSize,
-		},
-		Destination: dest,
-	}
-	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
+	batchSize := 10
+	sub := NewTestSubscription(topic, batchSize, dest)
 
-	err := s.Start(core.KafkaServers)
+	err := sub.Start(core.KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go s.Consume(ctx)
+	go sub.Consume(ctx)
 
 	totalMessages := 111
 	sent := map[string]string{}
@@ -114,7 +103,178 @@ func TestMultipleBatches(t *testing.T) {
 			received[string(msg.Key)] = string(msg.Value)
 		}
 	}
-
 	t.Logf("checking all messages received")
 	assert.Equal(t, sent, received)
+}
+
+var (
+	topicNum        = 0
+	subscriptionNum = 0
+)
+
+func NextTopic() string            { topicNum++; return fmt.Sprintf("topic-%d-%s", topicNum, uuid.New().String()) }
+func NextSubscriptionName() string { subscriptionNum++; return fmt.Sprintf("sub-%d", subscriptionNum) }
+
+func NewTestProducer(t *testing.T) (topic string, producer *kafka.Producer) {
+	topic = NextTopic()
+	return topic, core.TestProducer(t)
+}
+
+func NewTestSubscription(topic string, batchSize int, dest *core.TestDestination) core.Subscription {
+	s := core.Subscription{
+		Name: NextSubscriptionName(),
+		ID:   uuid.New(),
+		Topic: core.Topic{
+			Topic: topic,
+		},
+		Config: core.Config{
+			BatchSize: batchSize,
+		},
+		Destination: dest,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
+	return s
+}
+
+func TestGenerateSubscriptionChangesDatabaseEmpty(t *testing.T) {
+
+	require.True(t, core.TestConnection(core.KafkaServers))
+	db := core.OpenTestDatabase(t)
+	defer db.Close()
+
+	subChanges := make(chan core.SubscriptionSetEvent)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// Run a goroutine to capture the events from subChanges
+	events := make([]core.SubscriptionSetEvent, 0)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case evt := <-subChanges:
+				t.Log("received event")
+				events = append(events, evt)
+			}
+		}
+	}()
+	pollingPeriod := time.Duration(250 * time.Millisecond)
+
+	go GenerateSubscriptionChanges(ctx, db, subChanges, pollingPeriod)
+
+	// Wait for the context to timeout
+	<-ctx.Done()
+
+	// Check that no events were received
+	require.Len(t, events, 0)
+}
+
+func TestGenerateSubscriptionChangesReadFromDatabase(t *testing.T) {
+	core.DefaultTest = t
+	require.True(t, core.TestConnection(core.KafkaServers))
+	db := core.OpenTestDatabase(t)
+	defer db.Close()
+
+	// Create a subscription
+	csub := NewTestSubscription(NextTopic(), 10, core.NewTestDest(t))
+	vsub, err := adapter.CoreToViewAdapter(csub)
+	require.NoError(t, err)
+
+	// save the subscription to the database
+	err = core.InsertSubscription(context.Background(), db, vsub)
+	require.NoError(t, err)
+
+	subChanges := make(chan core.SubscriptionSetEvent)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// Run a goroutine to capture the events from subChanges
+	events := make([]core.SubscriptionSetEvent, 0)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case evt := <-subChanges:
+				t.Log("received event")
+				events = append(events, evt)
+			}
+		}
+	}()
+	pollingPeriod := time.Duration(250 * time.Millisecond)
+
+	go GenerateSubscriptionChanges(ctx, db, subChanges, pollingPeriod)
+
+	// Wait for the context to timeout
+	<-ctx.Done()
+
+	// Check that the correct event was received
+	require.Len(t, events, 1)
+	assert.Equal(t, core.NewSubscriptionEvent, events[0].Type)
+	assert.Equal(t, csub.ID, events[0].Subscription.ID)
+}
+
+func TestGenerateSubscriptionChangesReadFromDatabaseMany(t *testing.T) {
+	core.DefaultTest = t
+	require.True(t, core.TestConnection(core.KafkaServers))
+	db := core.OpenTestDatabase(t)
+	defer db.Close()
+
+	// Create 100 subscriptions
+	createdIds := []uuid.UUID{}
+	for i := 0; i < 100; i++ {
+		csub := NewTestSubscription(NextTopic(), 10, core.NewTestDest(t))
+		vsub, err := adapter.CoreToViewAdapter(csub)
+		require.NoError(t, err)
+
+		// save the subscription to the database
+		err = core.InsertSubscription(context.Background(), db, vsub)
+		require.NoError(t, err)
+		createdIds = append(createdIds, csub.ID)
+	}
+
+	subChanges := make(chan core.SubscriptionSetEvent)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// Run a goroutine to capture the events from subChanges
+	events := make([]core.SubscriptionSetEvent, 0)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case evt := <-subChanges:
+				t.Log("received event")
+				events = append(events, evt)
+			}
+		}
+	}()
+	pollingPeriod := time.Duration(250 * time.Millisecond)
+
+	go GenerateSubscriptionChanges(ctx, db, subChanges, pollingPeriod)
+
+	// Wait for the context to timeout
+	<-ctx.Done()
+
+	// Check that the correct event was received
+	require.Len(t, events, 100)
+	for i, evt := range events {
+		assert.Equal(t, core.NewSubscriptionEvent, evt.Type)
+		// Check that the ID is in the list of created IDs
+		found := false
+		for _, id := range createdIds {
+			if id == evt.Subscription.ID {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "event %d, id %s not found in createdIds", i, evt.Subscription.ID)
+	}
 }

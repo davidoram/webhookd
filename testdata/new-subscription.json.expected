@@ -22,9 +22,6 @@
             "max_batch_size": 10,
             "max_batch_interval_seconds": 10
         },
-        "payload_size": {
-            "max_payload_size_kb": 0
-        },
         "retry": {
             "max_retries": 3,
             "retry_algorithm": "exponential_backoff",

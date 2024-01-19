@@ -151,13 +151,18 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 	cSubMap := map[uuid.UUID]core.Subscription{}
 
 	// Read the subscriptions in batches, until all subscriptions have been read
-	maxUpdatedAt := time.Date(1990, time.January, 1, 0, 0, 0, 0, time.UTC)
+	maxUpdatedAt := time.Time{}
+	var err error
 	for {
 		// Get all the subscriptions from the database
-		vSubs, err := core.GetActiveSubscriptions(ctx, db, vSubs.Offset, vSubs.Limit)
+		vSubs, err = core.GetActiveSubscriptions(ctx, db, vSubs.Offset, vSubs.Limit)
 		if err != nil {
 			return err
 		}
+		slog.Info("reading subscriptions from database",
+			slog.Any("count", len(vSubs.Subscriptions)),
+			slog.Any("offset", vSubs.Offset),
+			slog.Any("limit", vSubs.Limit))
 
 		// Save each subscription to the map, send each subscription to the channel as a NewSubscriptionEvent,
 		// and find the max updated_at time/ so we can detect any new subscriptions added to the database
@@ -168,6 +173,7 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 			}
 			cSubMap[vsub.ID] = csub
 
+			slog.Info("subscription set event", slog.String("type", string(core.NewSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
 			subChanges <- core.SubscriptionSetEvent{
 				Type:         core.NewSubscriptionEvent,
 				Subscription: &csub,
@@ -184,13 +190,14 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 		}
 
 		// Update the offset, so we can read the next batch of subscriptions
-		vSubs.Offset += vSubs.Limit
+		vSubs.Offset = vSubs.Offset + vSubs.Limit
 	}
 
 	// start a loop that will run until the context is cancelled, or an error occurs
 	// the loop will detect any changes to the subscriptions in the database and send them to the channel
 	// as NewSubscriptionEvent, UpdatedSubscriptionEvent or DeletedSubscriptionEvent
 	for {
+		slog.Info("polling database for subscription changes")
 		select {
 		case <-ctx.Done():
 			return nil
@@ -214,47 +221,50 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 		}
 
 		// Process any changes to the subscriptions
-		for id, cSub := range changedSubMap {
+		for id, csub := range changedSubMap {
 
 			// New if not in the subMap
 			if _, ok := cSubMap[id]; !ok {
 
 				// Update the map
-				cSubMap[cSub.ID] = cSub
+				cSubMap[csub.ID] = csub
 
+				slog.Info("subscription set event", slog.String("type", string(core.NewSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
 				// Publish the change to the channel
 				subChanges <- core.SubscriptionSetEvent{
 					Type:         core.NewSubscriptionEvent,
-					Subscription: &cSub,
+					Subscription: &csub,
 				}
 
 			} else {
 				// Updated if IsActive
-				if cSub.IsActive() {
+				if csub.IsActive() {
 					// Update the map
-					cSubMap[cSub.ID] = cSub
+					cSubMap[csub.ID] = csub
 
+					slog.Info("subscription set event", slog.String("type", string(core.UpdatedSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
 					// Publish the change to the channel
 					subChanges <- core.SubscriptionSetEvent{
 						Type:         core.UpdatedSubscriptionEvent,
-						Subscription: &cSub,
+						Subscription: &csub,
 					}
 
 				} else {
 					// Subscription deleted, remove from the map
-					delete(cSubMap, cSub.ID)
+					delete(cSubMap, csub.ID)
 
+					slog.Info("subscription set event", slog.String("type", string(core.DeletedSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
 					// Publish the change to the channel
 					subChanges <- core.SubscriptionSetEvent{
 						Type:         core.DeletedSubscriptionEvent,
-						Subscription: &cSub,
+						Subscription: &csub,
 					}
 
 				}
 			}
 			// Update the maxUpdatedAt time
-			if cSub.UpdatedAt.After(maxUpdatedAt) {
-				maxUpdatedAt = cSub.UpdatedAt
+			if csub.UpdatedAt.After(maxUpdatedAt) {
+				maxUpdatedAt = csub.UpdatedAt
 			}
 		}
 		// Sleep for the polling period

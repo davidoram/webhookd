@@ -60,9 +60,7 @@ func TestUnmarshalSubscription(t *testing.T) {
 				"max_batch_size": 50,
 				"max_batch_interval_seconds": 30
 			},
-			"payload_size": {
-				"max_payload_size_kb": 1024
-			},
+			
 			"retry": {
 				"max_retries": 1,
 				"retry_algorithm": "exponential_backoff"
@@ -89,7 +87,6 @@ func TestUnmarshalSubscription(t *testing.T) {
 	assert.Equal(t, 1, len(s.Source[0].JmesFilters))
 	assert.Equal(t, 50, s.Configuration.Batching.MaxBatchSize)
 	assert.Equal(t, 30, s.Configuration.Batching.MaxBatchIntervalSeconds)
-	assert.Equal(t, 1024, s.Configuration.PayloadSize.MaxPayloadSizeKb)
 	assert.Equal(t, 1, s.Configuration.Retry.MaxRetries)
 	assert.Equal(t, "exponential_backoff", s.Configuration.Retry.RetryAlgorithm)
 	assert.Equal(t, "email", s.Configuration.Alerting.AlertChannel)
@@ -130,7 +127,6 @@ func TestUnmarshalSubscriptionWithDefaults(t *testing.T) {
 	assert.Equal(t, 0, len(s.Source[0].JmesFilters))
 	assert.Equal(t, 50, s.Configuration.Batching.MaxBatchSize)
 	assert.Equal(t, 30, s.Configuration.Batching.MaxBatchIntervalSeconds)
-	assert.Equal(t, 1024, s.Configuration.PayloadSize.MaxPayloadSizeKb)
 	assert.Equal(t, 3, s.Configuration.Retry.MaxRetries)
 	assert.Equal(t, "exponential_backoff", s.Configuration.Retry.RetryAlgorithm)
 	assert.Equal(t, "none", s.Configuration.Alerting.AlertChannel)

@@ -59,9 +59,6 @@ make load-test-setup
             "max_batch_size": {int},  // 1 >= x <= 1000
             "max_batch_interval_seconds": {int}  // Max amount of time to wait before sending a batch in seconds eg: 60 means 1 minute. 1 <= x <= 300
         },
-        "payload_size": {
-            "max_payload_size_kb": {int}, // eg: 10 means 10 * 1024 bytes. 1 <= x <= 5000
-        },
         "retry": {
             "max_retries": {int},  // >= 0. 0 Means no retries. 0 <= x <= 10
             "retry_algorithm": "reference:exponential_backoff|fixed_time"
