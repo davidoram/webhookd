@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,11 +18,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	KafkaHost     = "localhost"
-	KafkaPort     = "9092"
-	ZooKeeperPort = "2081"
+var (
+	// List of comma separated kafka servers to connect to, defaults to "localhost:9092",
+	// or override with KAFKA_SERVERS env var
+	KafkaServers = "localhost:9092"
+
+	// List of comma separated zookeeper servers to connect to, defaults to "localhost:2081",
+	// or override with ZOOKEEPER_SERVERS env var
+	ZooKeeperServers = "localhost:2081"
 )
+
+func init() {
+	if host := os.Getenv("KAFKA_SERVERS"); host != "" {
+		KafkaServers = host
+	}
+	if port := os.Getenv("ZOOKEEPER_SERVERS"); port != "" {
+		ZooKeeperServers = port
+	}
+}
 
 type TestListener struct {
 	t       *testing.T
@@ -53,34 +68,44 @@ type BatchEvent struct {
 	Messages []*kafka.Message
 }
 
+var (
+	DefaultTest *testing.T
+)
+
 func NewTestDest(t *testing.T) *TestDestination {
 	td := TestDestination{
 		t:       t,
 		Batches: make([][]*kafka.Message, 0),
 		Events:  make(chan BatchEvent),
 	}
+	if t == nil {
+		td.t = DefaultTest
+	}
 	td.SendOK = func(_ *TestDestination, _ []*kafka.Message) bool { return true }
 	return &td
 }
 
-func (wh *TestDestination) Send(ctx context.Context, msgs []*kafka.Message) error {
+func (td *TestDestination) Send(ctx context.Context, msgs []*kafka.Message) error {
 	// Only save the messages if SendOK is true
-	if !wh.SendOK(wh, msgs) {
-		wh.t.Logf("TestDestination received batch %d with %d messages, ACK failed", len(wh.Batches), len(msgs))
+	if !td.SendOK(td, msgs) {
+		td.t.Logf("TestDestination received batch %d with %d messages, ACK failed", len(td.Batches), len(msgs))
 		return fmt.Errorf("TestDestination NACK")
 	}
-	wh.t.Logf("TestDestination received batch %d with %d messages, ACK ok", len(wh.Batches), len(msgs))
-	wh.Events <- BatchEvent{Index: len(wh.Batches), Messages: msgs}
-	wh.Batches = append(wh.Batches, msgs)
+	td.t.Logf("TestDestination received batch %d with %d messages, ACK ok", len(td.Batches), len(msgs))
+	td.Events <- BatchEvent{Index: len(td.Batches), Messages: msgs}
+	td.Batches = append(td.Batches, msgs)
 	return nil
 }
 
-func testProducer(t *testing.T) *kafka.Producer {
+func (td *TestDestination) TypeName() string {
+	return "test_destination"
+}
 
-	hostPort := fmt.Sprintf("%s:%s", KafkaHost, KafkaPort)
-	t.Logf("stating producer, bootstrap.servers: %s", hostPort)
+func TestProducer(t *testing.T) *kafka.Producer {
+
+	t.Logf("stating producer, bootstrap.servers: %s", KafkaServers)
 	p, err := kafka.NewProducer(&kafka.ConfigMap{
-		"bootstrap.servers": hostPort,
+		"bootstrap.servers": KafkaServers,
 		"acks":              "all",
 	})
 	assert.NoError(t, err, "creating kafka producer")
@@ -104,7 +129,7 @@ func testProducer(t *testing.T) *kafka.Producer {
 	return p
 }
 
-func sendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) {
+func SendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) {
 	m := &kafka.Message{
 		Key:            []byte(key),
 		Value:          []byte(value),
@@ -126,13 +151,15 @@ func sendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) 
 	close(deliveryChan)
 }
 
-func testConnection(host string, port string) bool {
-	address := net.JoinHostPort(host, port)
-	conn, err := net.DialTimeout("tcp", address, time.Second*1)
-	if err != nil {
-		return false
+func TestConnection(hostPorts string) bool {
+	// hostPorts is a comma separated list of host:port pairs
+	for _, address := range strings.Split(hostPorts, ",") {
+		conn, err := net.DialTimeout("tcp", address, time.Second*1)
+		if err != nil {
+			return false
+		}
+		conn.Close()
 	}
-	conn.Close()
 	return true
 }
 

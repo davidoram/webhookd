@@ -4,23 +4,31 @@ https://github.com/confluentinc/confluent-kafka-go/tree/v1.4.0
 
 Provides the following functions:
 
-- Sources are Kafka topics
-- Registration includes 
-    - Callback url eg: https://my-website.com/path/to/endpoint
-    - Authentication for that endpoint:
-        - Token: http_header + token value
-    - Topics, list to subscribe to
-- Authorization
-    - Policy that specifys what payloads can be viewed from the topics subscribed to.
-- Retry mechanism
-- Rate limiting
-- Message batching
-- Message serialisation
-- Monitoring and logging
-- Error handling
-    - Deliver errors to clients
-    - System errors
-- Management API
+- [ ] Registration includes 
+    - [ ] Callback url eg: https://my-website.com/path/to/endpoint
+    - [ ] Authentication for that endpoint:
+        - [ ] Token: http_header + token value
+    - [ ] Topics, list to subscribe to
+- [ ] Authorization
+    - [ ] Policy that specifys what payloads can be viewed from the topics subscribed to.
+- [ ] Retry mechanism
+- [ ] Rate limiting
+- [ ] Message batching
+- [ ] Message serialisation
+- [ ] Monitoring and logging
+- [ ] Error handling
+    - [ ] Deliver errors to clients
+    - [ ] System errors
+- [ ] Management API
+
+# Load test
+
+```
+make clean dockerbuild
+build/csv-generate -csv load-test/data/input.csv -duration 1m -rows 1000 -topics 3
+make load-test-setup
+```
+
 
 # API
 
@@ -49,13 +57,10 @@ Provides the following functions:
     "configuration": {
         "batching": {
             "max_batch_size": {int},  // 1 >= x <= 1000
-            "max_batch_interval": {duration}  // Max amount of time to wait before sending a batch eg: 5m == 5 minutes
-        },
-        "payload_size": {
-            "max_payload_size_kb": {int}, // eg: 10 means 10 * 1024 bytes <= 5Mb
+            "max_batch_interval_seconds": {int}  // Max amount of time to wait before sending a batch in seconds eg: 60 means 1 minute. 1 <= x <= 300
         },
         "retry": {
-            "max_retries": {int},  // >= 0. 0 Means no retries
+            "max_retries": {int},  // >= 0. 0 Means no retries. 0 <= x <= 10
             "retry_algorithm": "reference:exponential_backoff|fixed_time"
         },
         "alerting": {
@@ -229,11 +234,25 @@ Unit tests run automatically when a Pull Request is updated, or merged.
 To run tests locally you can run:
 
 ```
-docker compose up
 make test
 ```
 
 ## Load test
 
 Because load tests take a long time to run, and open source projects have [billing limits](https://docs.github.com/en/billing/managing-billing-for-github-actions/about-billing-for-github-actions), the load test action is triggered manually, by running the 'load-test' action manually from the 'Actions' tab in GitHub.
+
+Load tests run inside docker, and it works as follows:
+
+- Build the tests in a docker container
+- Run the docker-compose file
+- Run webhookd
+- Create a webhook consumer that saves all the messages it receives, into a sqlite database 
+- Trigger the producer that creates a large multitude of messages, over a period of time, performing 
+    - Scale up/down the kafka cluster
+- Wait until all messages have been consumed
+- Run comparison tests to check:
+    - Each input message is captured in the webhook
+    - Count the the number of duplicates received
+    - Calculate the min,max,average time to send
+
 

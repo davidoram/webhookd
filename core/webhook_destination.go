@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ type WebhookDestination struct {
 	URL        string
 	MaxRetries int
 	Retry      Retrier
+	Headers    http.Header
 	client     *http.Client
 }
 
@@ -24,7 +25,11 @@ var WebhookSendFailed = errors.New("webhook send failed")
 // NewWebhook creates a new WebhookDestination using the given URL, and a default retry policy
 // it also uses the default http.Client
 func NewWebhook(url string) WebhookDestination {
-	return WebhookDestination{URL: url, MaxRetries: 5, Retry: ExponentialRetrier, client: http.DefaultClient}
+	return WebhookDestination{URL: url, MaxRetries: 5, Retry: ExponentialRetrier{}, client: http.DefaultClient, Headers: make(http.Header)}
+}
+
+func (wh WebhookDestination) TypeName() string {
+	return "webhook"
 }
 
 func (wh WebhookDestination) WithClient(client *http.Client) WebhookDestination {
@@ -34,7 +39,9 @@ func (wh WebhookDestination) WithClient(client *http.Client) WebhookDestination 
 
 // Send messages and return if the desination has accepted the messages, and is ready for the next batch
 // Will be called repeatedly with the same messages until the Destination returns nil to indicate that
-// the destination has accepted the messages, and is ready to receive the next batch
+// the destination has accepted the messages, and is ready to receive the next batch.
+// Expects the reciever to accept a POST request with a JSON body of the form described by core.MessageBatch
+// and interprets a 200 (OK), or 201 (Created) as meaning that the reciever has accepted the messages.
 func (wh WebhookDestination) Send(ctx context.Context, msgs []*kafka.Message) error {
 	batch := encode(msgs)
 	buf, err := json.Marshal(batch)
@@ -50,17 +57,24 @@ func (wh WebhookDestination) Send(ctx context.Context, msgs []*kafka.Message) er
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			// Send the batch to the webhook destination
-			resp, err := wh.client.Post(wh.URL, "application/json", bytes.NewBuffer(buf))
+			// Build the request
+			req, err := http.NewRequest("POST", wh.URL, bytes.NewBuffer(buf))
 			if err != nil {
-				delay := wh.Retry(i, wh.MaxRetries)
+				return err
+			}
+			// Add any headers
+			req.Header = wh.Headers.Clone()
+			// Send the request
+			resp, err := wh.client.Do(req)
+			if err != nil {
+				delay := wh.Retry.RetryIn(i, wh.MaxRetries)
 				log.Printf("Error sending batch to webhook destination: %v", err)
 				time.Sleep(delay)
 				continue
 			}
 			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				delay := wh.Retry(i, wh.MaxRetries)
+			if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+				delay := wh.Retry.RetryIn(i, wh.MaxRetries)
 				log.Printf("Webhook returned status code %s, delaying for %s", resp.Status, delay.String())
 				time.Sleep(delay)
 				continue

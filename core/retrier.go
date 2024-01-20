@@ -1,11 +1,14 @@
-package main
+package core
 
 import (
 	"math"
 	"time"
 )
 
-type Retrier func(retries, maxretries int) time.Duration
+type Retrier interface {
+	RetryIn(retries, maxretries int) time.Duration
+	Name() string
+}
 
 // ExponentialRetrier returns a duration that increases exponentially
 // with each retry, up to maxretries, with a base of 10 seconds
@@ -26,14 +29,21 @@ type Retrier func(retries, maxretries int) time.Duration
 // 13: 81920 ~ 22.7 hours
 // 14: 163840 ~ 45.5 hours
 // 15: 327680 ~ 91 hours
-func ExponentialRetrier(retries, maxretries int) time.Duration {
+// etc...
+type ExponentialRetrier struct{}
+
+func (r ExponentialRetrier) RetryIn(retries, maxretries int) time.Duration {
 	if retries > maxretries {
 		return time.Duration(math.Pow(2, float64(maxretries))) * (10 * time.Second)
 	}
 	return time.Duration(math.Pow(2, float64(retries))) * (10 * time.Second)
 }
+func (r ExponentialRetrier) Name() string { return "exponential_backoff" }
 
 // FixedRetrier function returns a fixed duration
-func FixedRetrier(dur time.Duration) Retrier {
-	return func(retries, maxretries int) time.Duration { return dur }
+type FixedRetrier struct {
+	Duration time.Duration
 }
+
+func (r FixedRetrier) RetryIn(retries, maxretries int) time.Duration { return r.Duration }
+func (r FixedRetrier) Name() string                                  { return "fixed" }

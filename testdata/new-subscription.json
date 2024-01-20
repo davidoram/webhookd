@@ -1,0 +1,37 @@
+{
+    "name": "test-sub-1",
+    "destination": {
+        "kind": "webhook",
+        "webhook": {
+            "url": "https://localhost:9090/",
+            "headers": {
+                "X-Api-Key": "e2315fb8-fe95-4d1d-a553-dd34ad1ea4db"
+            }
+        }
+    },
+    "source": [
+        {
+            "topic": "topic-1",
+            "jmes_filters": []
+        }
+    ],
+    "configuration": {
+        "batching": {
+            "max_batch_size": 10,
+            "max_batch_interval_seconds": 10
+        },
+        "retry": {
+            "max_retries": 3,
+            "retry_algorithm": "exponential_backoff"
+        }
+    },
+    "payload_size": {
+        "max_payload_size_kb": 100
+    },
+    "alerting": {
+        "alert_channel": "email",
+        "alert_emails": [
+            "admin@client.com"
+        ]
+    }
+}

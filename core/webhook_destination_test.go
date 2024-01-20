@@ -1,10 +1,8 @@
-package main
+package core
 
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -16,10 +14,10 @@ import (
 func TestSendToWebhook(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, TestConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1000
@@ -32,12 +30,9 @@ func TestSendToWebhook(t *testing.T) {
 	// Create the destination
 	dest := NewWebhook(fmt.Sprintf("%s/messages", svr.Server.URL))
 	// Don't make the test wait for retries
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -48,10 +43,10 @@ func TestSendToWebhook(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -64,7 +59,7 @@ func TestSendToWebhook(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	// Wait for all messages to be received
@@ -77,10 +72,10 @@ func TestSendToWebhook(t *testing.T) {
 func TestSendToWebhookWithRetry(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, TestConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1000
@@ -95,12 +90,9 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 	// Create the destination
 	dest := NewWebhook(fmt.Sprintf("%s/messages", svr.Server.URL))
 	// Don't make the test wait for retries
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -111,10 +103,10 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -127,7 +119,7 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	// Wait for all messages to be received
@@ -140,10 +132,10 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 func TestSendToWebhookAuthToken(t *testing.T) {
 	batchSize := 100
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, TestConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1000
@@ -159,15 +151,12 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 	// Create the destination
 	dest := NewWebhook(fmt.Sprintf("%s/messages", svr.Server.URL))
 	// Don't make the test wait for retries
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 	// Set the auth token
 	dest = dest.WithClient(NewAuthTokenClient(svr.AuthHeaderValue, time.Second*1))
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -178,10 +167,10 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -194,7 +183,7 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	// Wait for all messages to be received
@@ -207,10 +196,10 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 func TestSendToWebhookBadAuthToken(t *testing.T) {
 	batchSize := 1
 
-	require.True(t, testConnection(KafkaHost, KafkaPort))
+	require.True(t, TestConnection(KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
-	producer := testProducer(t)
+	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1
@@ -226,15 +215,12 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	// Create the destination
 	dest := NewWebhook(fmt.Sprintf("%s/messages", svr.Server.URL))
 	// Don't make the test wait for retries
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 	// Set the auth token
 	dest = dest.WithClient(NewAuthTokenClient("wrong-auth-token", time.Millisecond*200))
-	dest.Retry = FixedRetrier(time.Millisecond)
+	dest.Retry = FixedRetrier{Duration: time.Millisecond}
 
 	// Setup the Subscription
-	var loggingLevel = new(slog.LevelVar)
-	loggingLevel.Set(slog.LevelDebug)
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: loggingLevel}))
 	s := Subscription{
 		Name: "sub-1",
 		ID:   uuid.New(),
@@ -245,12 +231,12 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 			BatchSize: batchSize,
 		},
 		Destination: dest,
-	}.WithLogger(logger)
+	}
 	tl := NewTestListener(t, SubscriptionEventBatchSentNACK, done)
 	s.AddListener(tl)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(fmt.Sprintf("%s:%s", KafkaHost, KafkaPort))
+	err := s.Start(KafkaServers)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -263,7 +249,7 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	}
 
 	for k, v := range sent {
-		sendMsgBlocking(t, producer, k, v, topic)
+		SendMsgBlocking(t, producer, k, v, topic)
 	}
 
 	// Wait to get a callback saying the messages couldnt be sent

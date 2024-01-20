@@ -22,9 +22,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Start containers
-      run: docker-compose -f "docker-compose.yml" up -d --build
-
     - name: Setup Go ${{ matrix.go-version }}
       uses: actions/setup-go@v4
       with:
@@ -47,7 +44,3 @@ jobs:
           
     - name: Run tests
       run: make test
-
-    - name: Stop containers
-      if: always()
-      run: docker-compose -f "docker-compose.yml" down
