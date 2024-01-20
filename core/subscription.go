@@ -162,12 +162,13 @@ func (s *Subscription) Consume(ctx context.Context) {
 
 			switch e := ev.(type) {
 			case *kafka.Message:
-				// slog.Debug("received msg", slog.String("consumer_id", s.ID.String()), slog.String("topic", *e.TopicPartition.Topic), slog.String("key", string(e.Key)))
+				slog.Debug("received msg", slog.String("consumer_id", s.ID.String()), slog.String("topic", *e.TopicPartition.Topic), slog.String("key", string(e.Key)))
 				batch = append(batch, e)
 				if len(batch) < s.Config.BatchSize {
 					continue
 				}
 				var err error
+				slog.Debug("sending batch", slog.String("consumer_id", s.ID.String()), slog.Any("batch_size", len(batch)))
 				err = s.sendBatch(ctx, batch)
 				if err != nil {
 					run = false

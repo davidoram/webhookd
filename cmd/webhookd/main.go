@@ -9,6 +9,8 @@ import (
 	_ "net/http/pprof" // Register the pprof handlers. Run 'go tool pprof "http://localhost:8080/debug/pprof/profile?seconds=30"' to capture profiles
 	"os"
 	"os/signal"
+	"runtime/debug"
+	"sync"
 	"syscall"
 	"time"
 
@@ -71,7 +73,7 @@ func main() {
 	slog.Info("started subscription manager", slog.String("kafka", *kafkaBootstrapServers))
 
 	// Start a goroutine that will poll the database for changes to the subscriptions
-	go GenerateSubscriptionChanges(ctx, db, subChanges, *pollingPeriod)
+	go GenerateSubscriptionChangesWithRecovery(ctx, db, subChanges, *pollingPeriod)
 	slog.Info("listening for subscription changes")
 
 	// Start a web server to handle API requests, that will quit when the context is cancelled
@@ -134,6 +136,29 @@ func main() {
 	<-done
 }
 
+func GenerateSubscriptionChangesWithRecovery(ctx context.Context, db *sql.DB, subChanges chan core.SubscriptionSetEvent, pollingPeriod time.Duration) {
+	var wg sync.WaitGroup
+	errorOrPanic := false
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("Recovered from panic", slog.Any("error", r))
+				debug.PrintStack()
+				errorOrPanic = true
+			}
+		}()
+		GenerateSubscriptionChanges(ctx, db, subChanges, pollingPeriod)
+	}()
+
+	wg.Wait()
+	if errorOrPanic {
+		os.Exit(1)
+	}
+}
+
 // This function takes a database connection and channel of core.SubscriptionSetEvent,
 // it retrieves all the subscriptions in the database and sending them to the channel as NewSubscriptionEvent
 // then it loops, detecting any changes to the subscriptions in the database and sends them to the channel
@@ -159,10 +184,10 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 		if err != nil {
 			return err
 		}
-		slog.Info("reading subscriptions from database",
-			slog.Any("count", len(vSubs.Subscriptions)),
+		slog.Info("startup read subscriptions in database",
 			slog.Any("offset", vSubs.Offset),
-			slog.Any("limit", vSubs.Limit))
+			slog.Any("limit", vSubs.Limit),
+			slog.Any("found", len(vSubs.Subscriptions)))
 
 		// Save each subscription to the map, send each subscription to the channel as a NewSubscriptionEvent,
 		// and find the max updated_at time/ so we can detect any new subscriptions added to the database

@@ -2,6 +2,9 @@ package core
 
 import (
 	"context"
+	"log/slog"
+	"os"
+	"runtime/debug"
 	"sync"
 
 	"github.com/google/uuid"
@@ -79,7 +82,43 @@ func (sm *SubscriptionManager) start(sub *Subscription) error {
 		CancelFunc:   cancelFunc,
 	}
 	sm.subs[sub.ID] = sc
-	return sc.Subscription.Start(sm.KafkaBootstrapServers)
+	err := sc.Subscription.Start(sm.KafkaBootstrapServers)
+	if err != nil {
+		return err
+	}
+	go sm.consumeWithRecovery(sc)
+	return nil
+}
+
+// consumeWithRecovery runs the consume function in a goroutine and recovers from any panics / errors that occur
+// It will exit the process if a panic or error occurs
+func (sm *SubscriptionManager) consumeWithRecovery(sc *SubscriptionContext) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	errorOrPanic := false
+
+	go func() {
+		defer wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("consumer recovered from panic",
+					slog.Any("error", r),
+					slog.String("consumer_id", sc.Subscription.ID.String()),
+					slog.String("group_id", sc.Subscription.GroupID()),
+					slog.String("subscription.id", sc.Subscription.ID.String()),
+					slog.String("subscription.name", sc.Subscription.Name),
+				)
+				debug.PrintStack()
+				errorOrPanic = true
+			}
+		}()
+		sc.Subscription.Consume(sc.Context)
+	}()
+
+	wg.Wait()
+	if errorOrPanic {
+		os.Exit(1)
+	}
 }
 
 func (sm *SubscriptionManager) stop(subCtx *SubscriptionContext) error {

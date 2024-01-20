@@ -234,7 +234,6 @@ Unit tests run automatically when a Pull Request is updated, or merged.
 To run tests locally you can run:
 
 ```
-docker compose up
 make test
 ```
 
