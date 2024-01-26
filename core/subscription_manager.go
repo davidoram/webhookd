@@ -36,7 +36,7 @@ func (sm *SubscriptionManager) Start(ctx context.Context, events chan Subscripti
 		case <-ctx.Done():
 			return
 		case event := <-events:
-			sm.processEvent(event)
+			sm.processEvent(ctx, event)
 		}
 	}
 }
@@ -50,23 +50,38 @@ func (sm *SubscriptionManager) Close() {
 	}
 }
 
-func (sm *SubscriptionManager) processEvent(event SubscriptionSetEvent) error {
+func (sm *SubscriptionManager) processEvent(ctx context.Context, event SubscriptionSetEvent) error {
 	sm.subsMutex.Lock()
 	defer sm.subsMutex.Unlock()
 
 	switch event.Type {
 	case NewSubscriptionEvent:
-		return sm.start(event.Subscription)
-	case UpdatedSubscriptionEvent:
+		// Double check that the subscription doesn't already exist
 		subCtx, exists := sm.subs[event.Subscription.ID]
 		if exists {
 			sm.stop(subCtx)
+			delete(sm.subs, event.Subscription.ID)
 		}
-		return sm.start(event.Subscription)
-	case DeletedSubscriptionEvent:
+		// Start the new subscription
+		sm.start(ctx, event.Subscription)
+		sm.subs[event.Subscription.ID] = subCtx
+
+	case UpdatedSubscriptionEvent:
+		// Remove the existing subscription if it exists
 		subCtx, exists := sm.subs[event.Subscription.ID]
 		if exists {
 			sm.stop(subCtx)
+			delete(sm.subs, event.Subscription.ID)
+		}
+		// Start the updated subscription
+		sm.start(ctx, event.Subscription)
+		sm.subs[event.Subscription.ID] = subCtx
+	case DeletedSubscriptionEvent:
+		// Remove the existing subscription if it exists
+		subCtx, exists := sm.subs[event.Subscription.ID]
+		if exists {
+			sm.stop(subCtx)
+			delete(sm.subs, event.Subscription.ID)
 		}
 	default:
 		panic("unknown subscription set event type " + event.Type)
@@ -74,20 +89,15 @@ func (sm *SubscriptionManager) processEvent(event SubscriptionSetEvent) error {
 	return nil
 }
 
-func (sm *SubscriptionManager) start(sub *Subscription) error {
-	ctx, cancelFunc := context.WithCancel(context.Background())
+func (sm *SubscriptionManager) start(ctx context.Context, sub *Subscription) {
+	ctx, cancelFunc := context.WithCancel(ctx)
 	sc := &SubscriptionContext{
 		Subscription: sub,
 		Context:      ctx,
 		CancelFunc:   cancelFunc,
 	}
 	sm.subs[sub.ID] = sc
-	err := sc.Subscription.Start(sm.KafkaBootstrapServers)
-	if err != nil {
-		return err
-	}
 	go sm.consumeWithRecovery(sc)
-	return nil
 }
 
 // consumeWithRecovery runs the consume function in a goroutine and recovers from any panics / errors that occur
@@ -112,12 +122,12 @@ func (sm *SubscriptionManager) consumeWithRecovery(sc *SubscriptionContext) {
 				errorOrPanic = true
 			}
 		}()
-		sc.Subscription.Consume(sc.Context)
+		sc.Subscription.Start(sc.Context, sm.KafkaBootstrapServers)
 	}()
 
 	wg.Wait()
 	if errorOrPanic {
-		os.Exit(1)
+		os.Exit(1) // TODO Wrap for testing
 	}
 }
 

@@ -15,16 +15,16 @@ import (
 )
 
 func TestKafkaRunning(t *testing.T) {
-	if !core.TestConnection(core.KafkaServers) {
+	if !core.TCPConnect(core.KafkaServers) {
 		t.Errorf("Can't connect to %s - clients", core.KafkaServers)
 	}
-	if !core.TestConnection(core.ZooKeeperServers) {
+	if !core.TCPConnect(core.ZooKeeperServers) {
 		t.Errorf("Can't connect to %s - zookeeper", core.ZooKeeperServers)
 	}
 }
 
 func TestOneMessage(t *testing.T) {
-	require.True(t, core.TestConnection(core.KafkaServers))
+	require.True(t, core.TCPConnect(core.KafkaServers))
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := core.TestProducer(t)
@@ -44,12 +44,9 @@ func TestOneMessage(t *testing.T) {
 	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(core.KafkaServers)
-	require.NoError(t, err)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go s.Consume(ctx)
+	go s.Start(ctx, core.KafkaServers)
 
 	key := uuid.NewString()
 	core.SendMsgBlocking(t, producer, key, "msg-1", topic)
@@ -64,7 +61,7 @@ func TestOneMessage(t *testing.T) {
 }
 
 func TestMultipleBatches(t *testing.T) {
-	require.True(t, core.TestConnection(core.KafkaServers))
+	require.True(t, core.TCPConnect(core.KafkaServers))
 
 	topic, producer := NewTestProducer(t)
 	defer producer.Close()
@@ -73,12 +70,9 @@ func TestMultipleBatches(t *testing.T) {
 	batchSize := 10
 	sub := NewTestSubscription(topic, batchSize, dest)
 
-	err := sub.Start(core.KafkaServers)
-	require.NoError(t, err)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go sub.Consume(ctx)
+	go sub.Start(ctx, core.KafkaServers)
 
 	totalMessages := 111
 	sent := map[string]string{}
@@ -140,7 +134,7 @@ func NewTestSubscription(topic string, batchSize int, dest *core.TestDestination
 
 func TestGenerateSubscriptionChangesDatabaseEmpty(t *testing.T) {
 
-	require.True(t, core.TestConnection(core.KafkaServers))
+	require.True(t, core.TCPConnect(core.KafkaServers))
 	db := core.OpenTestDatabase(t)
 	defer db.Close()
 
@@ -175,7 +169,7 @@ func TestGenerateSubscriptionChangesDatabaseEmpty(t *testing.T) {
 
 func TestGenerateSubscriptionChangesReadFromDatabase(t *testing.T) {
 	core.DefaultTest = t
-	require.True(t, core.TestConnection(core.KafkaServers))
+	require.True(t, core.TCPConnect(core.KafkaServers))
 	db := core.OpenTestDatabase(t)
 	defer db.Close()
 
@@ -221,7 +215,7 @@ func TestGenerateSubscriptionChangesReadFromDatabase(t *testing.T) {
 
 func TestGenerateSubscriptionChangesReadFromDatabaseMany(t *testing.T) {
 	core.DefaultTest = t
-	require.True(t, core.TestConnection(core.KafkaServers))
+	require.True(t, core.TCPConnect(core.KafkaServers))
 	db := core.OpenTestDatabase(t)
 	defer db.Close()
 

@@ -151,7 +151,21 @@ func SendMsgBlocking(t *testing.T, p *kafka.Producer, key, value, topic string) 
 	close(deliveryChan)
 }
 
-func TestConnection(hostPorts string) bool {
+// TestTCPConnect fails unless it can connect to all the hosts in hostPorts "host:port"
+func TestTCPConnect(t *testing.T, hostPorts string) {
+	// hostPorts is a comma separated list of host:port pairs
+	for _, address := range strings.Split(hostPorts, ",") {
+		conn, err := net.DialTimeout("tcp", address, time.Second*1)
+		if err != nil {
+			t.Errorf("failed to connect to %s: %s. Did you forget to run 'make unit-test-setup'", address, err)
+			t.FailNow()
+		}
+		conn.Close()
+	}
+}
+
+// TCPConnect returns true if it can connect to all the hosts in hostPorts "host:port", false otherwise
+func TCPConnect(hostPorts string) bool {
 	// hostPorts is a comma separated list of host:port pairs
 	for _, address := range strings.Split(hostPorts, ",") {
 		conn, err := net.DialTimeout("tcp", address, time.Second*1)

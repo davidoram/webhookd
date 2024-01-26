@@ -26,64 +26,16 @@ type Subscription struct {
 	Destination Destination
 	consumer    *kafka.Consumer
 	listeners   []SubscriptionListener
+	ctx         context.Context
+	done        context.CancelCauseFunc
 }
 
 var ErrSendFailed = errors.New("send transactionally failed")
 var ErrContextCancelled = errors.New("context cancelled")
 
-func NewSubscription() Subscription {
-	return Subscription{}
-}
-
-// // NewSubscriptionFromJSON creates a new Subscription from a JSON byte array, it validates the JSON
-// // and returns an error if the JSON is invalid, or if any of the validation rules fail.
-// func NewSubscriptionFromJSON(id uuid.UUID, data []byte, createdAt, updatedAt time.Time, deletedAt sql.NullTime) (Subscription, error) {
-
-// 	var s configuration.Subscription
-// 	err := json.Unmarshal(data, &s)
-// 	if err != nil {
-// 		return Subscription{}, err
-// 	}
-// 	topic := Topic{Topic: s.Source[0].Topic}
-// 	filter := Filter{JMESFilter: ""}
-// 	if len(s.Source[0].JmesFilters) > 0 {
-// 		filter = Filter{JMESFilter: s.Source[0].JmesFilters[0]}
-// 	}
-// 	if len(s.Source[0].JmesFilters) > 1 {
-// 		return Subscription{}, errors.New("multiple JMES filters not supported")
-// 	}
-
-// 	sub := Subscription{
-// 		Name:   s.Name,
-// 		ID:     id,
-// 		Topic:  topic,
-// 		Filter: filter,
-// 		Config: Config{
-// 			MaxWait:   time.Duration(s.Configuration.Batching.MaxBatchIntervalSeconds) * time.Second,
-// 			BatchSize: s.Configuration.Batching.MaxBatchSize,
-// 		},
-// 		CreatedAt: createdAt,
-// 		UpdatedAt: updatedAt,
-// 		DeletedAt: deletedAt,
-// 	}
-// 	return sub, err
-// }
-
 func (s Subscription) IsActive() bool {
 	return !s.DeletedAt.Valid
 }
-
-// // MarshallForDatabase returns the subscription as a JSON byte array, in the format suitable for storing in the database
-// // it does not include the fields stored separately in the database eg: ID, CreatedAt, UpdatedAt or DeletedAt fields
-// func (s Subscription) MarshallForDatabase() ([]byte, error) {
-// 	return json.Marshal(s)
-// }
-
-// // MarshallForAPI returns the subscription as a JSON byte array, in the format suitable for rendering to the API
-// // which includes the fields stored separately in the database eg: ID, CreatedAt, UpdatedAt or DeletedAt fields
-// func (s Subscription) MarshallForAPI() ([]byte, error) {
-// 	return json.Marshal(s)
-// }
 
 func (s Subscription) ResourcePath() string {
 	return fmt.Sprintf("1/subscriptions/%s", s.ID)
@@ -97,8 +49,12 @@ func (s Subscription) GroupID() string {
 	return fmt.Sprintf("webhookd-%s", s.ID)
 }
 
-func (s *Subscription) Start(kafkaServers string) error {
+// Start starts the subscription, this is a blocking call, so run it in a go routine
+// it will return when the context is cancelled. Call context.Cause(ctx) that will wither return
+// the error that caused the context to be cancelled or context.Cancelled if the subscription was stopped
+func (s *Subscription) Start(ctx context.Context, kafkaServers string) {
 	var err error
+	s.ctx, s.done = context.WithCancelCause(ctx)
 	s.consumer, err = kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": kafkaServers,
 		// Avoid connecting to IPv6 brokers:
@@ -108,7 +64,7 @@ func (s *Subscription) Start(kafkaServers string) error {
 		// You typically don't need to specify this configuration property.
 		"broker.address.family": "v4",
 		"group.id":              s.GroupID(),
-		"auto.offset.reset":     "earliest", // Start reading from the end of the topic
+		"auto.offset.reset":     "earliest", // TODO is this correct? Start reading from the end of the topic
 		// "debug":                    "msg",
 		// "session.timeout.ms":   6000,
 		// "max.poll.interval.ms": 6000,
@@ -121,15 +77,17 @@ func (s *Subscription) Start(kafkaServers string) error {
 		"enable.auto.commit":       true,
 	})
 	if err != nil {
-		return err
+		slog.Error("failed to create consumer", slog.Any("error", err))
+		s.done(err)
+		return
 	}
 	slog.Info("start consumer", slog.String("bootstrap.servers", kafkaServers), slog.Any("consumer_id", s.ID), slog.String("group_id", s.GroupID()), slog.String("topic", s.Topic.Topic))
-	return s.consumer.SubscribeTopics([]string{s.Topic.Topic}, nil)
-}
-
-func (s *Subscription) Consume(ctx context.Context) {
-	slog.Info("consume loop started", slog.String("consumer_id", s.ID.String()))
-	defer slog.Info("consume loop finished", slog.String("consumer_id", s.ID.String()))
+	err = s.consumer.SubscribeTopics([]string{s.Topic.Topic}, nil)
+	if err != nil {
+		slog.Error("failed to subscribe to topics", slog.Any("error", err))
+		s.done(err)
+		return
+	}
 	for l := range s.listeners {
 		s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventStart, Subscription: s})
 	}
@@ -145,7 +103,7 @@ func (s *Subscription) Consume(ctx context.Context) {
 		case <-pushTicker.C:
 			if len(batch) > 0 {
 				var err error
-				err = s.sendBatch(ctx, batch)
+				err = s.sendBatch(s.ctx, batch)
 				if err != nil {
 					run = false
 				} else {
@@ -169,7 +127,7 @@ func (s *Subscription) Consume(ctx context.Context) {
 				}
 				var err error
 				slog.Debug("sending batch", slog.String("consumer_id", s.ID.String()), slog.Any("batch_size", len(batch)))
-				err = s.sendBatch(ctx, batch)
+				err = s.sendBatch(s.ctx, batch)
 				if err != nil {
 					run = false
 				} else {
@@ -198,6 +156,18 @@ func (s *Subscription) Consume(ctx context.Context) {
 	for l := range s.listeners {
 		s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventStop, Subscription: s})
 	}
+	if err != nil {
+		slog.Error("consumer stopped with error", slog.String("consumer_id", s.ID.String()), slog.Any("error", err))
+	} else {
+		slog.Info("consumer stopped", slog.String("consumer_id", s.ID.String()))
+	}
+	s.done(err)
+	return
+}
+
+func (s *Subscription) Stop() {
+	s.done(nil)
+	<-s.ctx.Done()
 }
 
 // sendBatch sends a batch of messages to the destination and commits the offset, if it returns an error

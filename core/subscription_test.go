@@ -8,18 +8,16 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSendToWebhook(t *testing.T) {
-	batchSize := 100
-
-	require.True(t, TestConnection(KafkaServers))
+	TestTCPConnect(t, KafkaServers)
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := TestProducer(t)
 	defer producer.Close()
 
+	batchSize := 100
 	totalMessages := 1000
 
 	// Start a real webserver to receive the webhook
@@ -46,13 +44,12 @@ func TestSendToWebhook(t *testing.T) {
 	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(KafkaServers)
-	require.NoError(t, err)
-
+	// Start the subscription
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go s.Consume(ctx)
+	go s.Start(ctx, KafkaServers)
 
+	// Send some messages
 	sent := map[string]string{}
 	for i := 0; i < totalMessages; i++ {
 		sent[fmt.Sprintf("%d", i)] = fmt.Sprintf("msg-%d", i)
@@ -70,15 +67,14 @@ func TestSendToWebhook(t *testing.T) {
 }
 
 func TestSendToWebhookWithRetry(t *testing.T) {
-	batchSize := 100
-
-	require.True(t, TestConnection(KafkaServers))
+	TestTCPConnect(t, KafkaServers)
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1000
+	batchSize := 100
 
 	// Start a real webserver to receive the webhook
 	done := make(chan bool)
@@ -106,13 +102,12 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(KafkaServers)
-	require.NoError(t, err)
-
+	// Start the subscription
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go s.Consume(ctx)
+	go s.Start(ctx, KafkaServers)
 
+	// Send some messages
 	sent := map[string]string{}
 	for i := 0; i < totalMessages; i++ {
 		sent[fmt.Sprintf("%d", i)] = fmt.Sprintf("msg-%d", i)
@@ -130,15 +125,14 @@ func TestSendToWebhookWithRetry(t *testing.T) {
 }
 
 func TestSendToWebhookAuthToken(t *testing.T) {
-	batchSize := 100
-
-	require.True(t, TestConnection(KafkaServers))
+	TestTCPConnect(t, KafkaServers)
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := TestProducer(t)
 	defer producer.Close()
 
 	totalMessages := 1000
+	batchSize := 100
 
 	// Start a real webserver to receive the webhook
 	done := make(chan bool)
@@ -170,13 +164,12 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 	}
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(KafkaServers)
-	require.NoError(t, err)
-
+	// Start the subscription
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go s.Consume(ctx)
+	go s.Start(ctx, KafkaServers)
 
+	// Send some messages
 	sent := map[string]string{}
 	for i := 0; i < totalMessages; i++ {
 		sent[fmt.Sprintf("%d", i)] = fmt.Sprintf("msg-%d", i)
@@ -194,14 +187,13 @@ func TestSendToWebhookAuthToken(t *testing.T) {
 }
 
 func TestSendToWebhookBadAuthToken(t *testing.T) {
-	batchSize := 1
-
-	require.True(t, TestConnection(KafkaServers))
+	TestTCPConnect(t, KafkaServers)
 
 	topic := fmt.Sprintf("topic-1-%s", uuid.NewString())
 	producer := TestProducer(t)
 	defer producer.Close()
 
+	batchSize := 1
 	totalMessages := 1
 
 	// Start a real webserver to receive the webhook
@@ -236,13 +228,12 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	s.AddListener(tl)
 	s.Config = s.Config.WithMaxWait(time.Millisecond * 10)
 
-	err := s.Start(KafkaServers)
-	require.NoError(t, err)
-
+	// Start the subscription
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go s.Consume(ctx)
+	go s.Start(ctx, KafkaServers)
 
+	// Send some messages
 	sent := map[string]string{}
 	for i := 0; i < totalMessages; i++ {
 		sent[fmt.Sprintf("%d", i)] = fmt.Sprintf("msg-%d", i)
@@ -253,7 +244,6 @@ func TestSendToWebhookBadAuthToken(t *testing.T) {
 	}
 
 	// Wait to get a callback saying the messages couldnt be sent
-
 	<-done
 
 	t.Logf("checking no messages received")

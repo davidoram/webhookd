@@ -225,6 +225,14 @@ Clients can get webhook status as follows:
 
 ```
 
+Key flows:
+
+- On startup the `SubscriptionManager` starts each `Subscription` in its own goroutine. 
+- The `SubscriptionManager` keeps a map of `id` -> `Subscription`
+- If a subscription is changed via API, the `SubscriptionManager` stops the old subscription, discards it and starts a new `Subscription`
+- `Subscriptions` are started by calling `Start(context.Context)`, and stopped by cancelling the `context.Context` object, or by calling `Done()` which does the same thing.
+
+
 # Tests
 
 ## Unit tests
