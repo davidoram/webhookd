@@ -222,7 +222,6 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 	// the loop will detect any changes to the subscriptions in the database and send them to the channel
 	// as NewSubscriptionEvent, UpdatedSubscriptionEvent or DeletedSubscriptionEvent
 	for {
-		slog.Info("polling database for subscription changes")
 		select {
 		case <-ctx.Done():
 			return nil
@@ -244,52 +243,55 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 			}
 			changedSubMap[vSub.ID] = csub
 		}
+		if len(changedSubMap) > 0 {
+			slog.Info("found subscription changes in db", slog.Any("found", len(changedSubMap)))
 
-		// Process any changes to the subscriptions
-		for id, csub := range changedSubMap {
+			// Process any changes to the subscriptions
+			for id, csub := range changedSubMap {
 
-			// New if not in the subMap
-			if _, ok := cSubMap[id]; !ok {
+				// New if not in the subMap
+				if _, ok := cSubMap[id]; !ok {
 
-				// Update the map
-				cSubMap[csub.ID] = csub
-
-				slog.Info("subscription set event", slog.String("type", string(core.NewSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
-				// Publish the change to the channel
-				subChanges <- core.SubscriptionSetEvent{
-					Type:         core.NewSubscriptionEvent,
-					Subscription: &csub,
-				}
-
-			} else {
-				// Updated if IsActive
-				if csub.IsActive() {
 					// Update the map
 					cSubMap[csub.ID] = csub
 
-					slog.Info("subscription set event", slog.String("type", string(core.UpdatedSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
+					slog.Info("subscription set event", slog.String("type", string(core.NewSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
 					// Publish the change to the channel
 					subChanges <- core.SubscriptionSetEvent{
-						Type:         core.UpdatedSubscriptionEvent,
+						Type:         core.NewSubscriptionEvent,
 						Subscription: &csub,
 					}
 
 				} else {
-					// Subscription deleted, remove from the map
-					delete(cSubMap, csub.ID)
+					// Updated if IsActive
+					if csub.IsActive() {
+						// Update the map
+						cSubMap[csub.ID] = csub
 
-					slog.Info("subscription set event", slog.String("type", string(core.DeletedSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
-					// Publish the change to the channel
-					subChanges <- core.SubscriptionSetEvent{
-						Type:         core.DeletedSubscriptionEvent,
-						Subscription: &csub,
+						slog.Info("subscription set event", slog.String("type", string(core.UpdatedSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
+						// Publish the change to the channel
+						subChanges <- core.SubscriptionSetEvent{
+							Type:         core.UpdatedSubscriptionEvent,
+							Subscription: &csub,
+						}
+
+					} else {
+						// Subscription deleted, remove from the map
+						delete(cSubMap, csub.ID)
+
+						slog.Info("subscription set event", slog.String("type", string(core.DeletedSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
+						// Publish the change to the channel
+						subChanges <- core.SubscriptionSetEvent{
+							Type:         core.DeletedSubscriptionEvent,
+							Subscription: &csub,
+						}
+
 					}
-
 				}
-			}
-			// Update the maxUpdatedAt time
-			if csub.UpdatedAt.After(maxUpdatedAt) {
-				maxUpdatedAt = csub.UpdatedAt
+				// Update the maxUpdatedAt time
+				if csub.UpdatedAt.After(maxUpdatedAt) {
+					maxUpdatedAt = csub.UpdatedAt
+				}
 			}
 		}
 		// Sleep for the polling period

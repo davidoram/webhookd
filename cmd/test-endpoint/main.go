@@ -365,7 +365,7 @@ func (hctx HandlerContext) SaveMessages(w http.ResponseWriter, r *http.Request, 
 
 	// Update the message count
 	newMsgCnt += len(batch.Messages)
-	slog.Error("Recieved batch of messages", slog.Any("batch_size", len(batch.Messages)))
+	slog.Info("received batch of messages", slog.Any("batch_size", len(batch.Messages)))
 	w.WriteHeader(http.StatusCreated)
 	w.Write(body)
 }

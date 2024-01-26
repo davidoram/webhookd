@@ -25,7 +25,7 @@ Provides the following functions:
 
 ```
 make clean dockerbuild
-build/csv-generate -csv load-test/data/input.csv -duration 1m -rows 1000 -topics 3
+build/csv-generate -csv load-test/data/input.csv -duration 1m -rows 1000 -topics 1
 make load-test-setup
 ```
 
