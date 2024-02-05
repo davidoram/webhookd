@@ -27,6 +27,8 @@ Provides the following functions:
 make clean dockerbuild
 build/csv-generate -csv load-test/data/input.csv -duration 1m -rows 1000 -topics 1
 make load-test-setup
+while true:
+  curl -X GET http://localhost:8081/statistics   # Returns {"total": 1000, "duplicate": 0, "avg_msg_per_sec_last_30s": 0.000000}
 ```
 
 
