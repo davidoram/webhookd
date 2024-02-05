@@ -23,22 +23,19 @@ func NewSubscriptionManager(kafkaServers string) *SubscriptionManager {
 	}
 }
 
-func (sm *SubscriptionManager) Start(ctx context.Context, events chan SubscriptionSetEvent) {
+func (sm *SubscriptionManager) Start(ctx context.Context, events chan SubscriptionChangeEvent) {
 	// Loop forever, processing subscription set events until the context is cancelled
-	for {
+	var err error
+	for err == nil {
 		select {
 		case <-ctx.Done():
-			return
+			err = ctx.Err()
 		case event := <-events:
 			sm.processEvent(ctx, event)
 		}
 	}
-}
 
-func (sm *SubscriptionManager) Close() {
-	sm.subsMutex.Lock()
-	defer sm.subsMutex.Unlock()
-	// Stop all subscriptions
+	// Stop all subscriptions before exiting
 	for _, sub := range sm.subs {
 		sub.Stop()
 	}
@@ -46,34 +43,13 @@ func (sm *SubscriptionManager) Close() {
 	sm.subs = map[uuid.UUID]*Subscription{}
 }
 
-func (sm *SubscriptionManager) processEvent(ctx context.Context, event SubscriptionSetEvent) error {
+func (sm *SubscriptionManager) processEvent(ctx context.Context, event SubscriptionChangeEvent) error {
 	sm.subsMutex.Lock()
 	defer sm.subsMutex.Unlock()
 
-	switch event.Type {
-	case NewSubscriptionEvent:
-		// Double check that the subscription doesn't already exist
-		if oldSub, ok := sm.subs[event.Subscription.ID]; ok {
-			sm.stop(oldSub)
-		}
-		// Start the new subscription
+	sm.stop(event.Subscription)
+	if event.Subscription.IsActive() {
 		sm.start(ctx, event.Subscription)
-		sm.subs[event.Subscription.ID] = event.Subscription
-
-	case UpdatedSubscriptionEvent:
-		// Remove the existing subscription if it exists
-		if oldSub, ok := sm.subs[event.Subscription.ID]; ok {
-			sm.stop(oldSub)
-		}
-		// Start the updated subscription
-		sm.start(ctx, event.Subscription)
-	case DeletedSubscriptionEvent:
-		// Remove the existing subscription if it exists
-		if oldSub, ok := sm.subs[event.Subscription.ID]; ok {
-			sm.stop(oldSub)
-		}
-	default:
-		panic("unknown subscription set event type " + event.Type)
 	}
 	return nil
 }
@@ -84,8 +60,10 @@ func (sm *SubscriptionManager) start(ctx context.Context, sub *Subscription) {
 }
 
 func (sm *SubscriptionManager) stop(sub *Subscription) {
-	sub.Stop()
-	delete(sm.subs, sub.ID)
+	if oldSub, ok := sm.subs[sub.ID]; ok {
+		oldSub.Stop()
+		delete(sm.subs, sub.ID)
+	}
 }
 
 // consumeWithRecovery runs the consume function in a goroutine and recovers from any panics / errors that occur

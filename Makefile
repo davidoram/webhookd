@@ -29,6 +29,12 @@ install-librdkafka:
 	cd ..
 	rm -rf librdkafka
 
+install-sqldiff-mac:
+	brew install sqldiff
+
+install-sqldiff-linux:
+	sudo apt-get install -y sqldiff
+
 clean:
 	rm -rf build load-test/data
 	mkdir -p load-test/data
@@ -65,7 +71,7 @@ unit-test-setup:
 unit-test-teardown:
 	docker-compose -f docker-compose.yml down 	
 
-load-test-setup:
+load-test-setup: load-test-teardown
 	docker compose --file load-test/docker-compose.yml up --detach --force-recreate --remove-orphans
 
 load-test-teardown:

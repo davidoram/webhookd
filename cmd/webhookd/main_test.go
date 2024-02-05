@@ -138,13 +138,13 @@ func TestGenerateSubscriptionChangesDatabaseEmpty(t *testing.T) {
 	db := core.OpenTestDatabase(t)
 	defer db.Close()
 
-	subChanges := make(chan core.SubscriptionSetEvent)
+	subChanges := make(chan core.SubscriptionChangeEvent)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	// Run a goroutine to capture the events from subChanges
-	events := make([]core.SubscriptionSetEvent, 0)
+	events := make([]core.SubscriptionChangeEvent, 0)
 	go func() {
 		for {
 			select {
@@ -182,13 +182,13 @@ func TestGenerateSubscriptionChangesReadFromDatabase(t *testing.T) {
 	err = core.InsertSubscription(context.Background(), db, vsub)
 	require.NoError(t, err)
 
-	subChanges := make(chan core.SubscriptionSetEvent)
+	subChanges := make(chan core.SubscriptionChangeEvent)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	// Run a goroutine to capture the events from subChanges
-	events := make([]core.SubscriptionSetEvent, 0)
+	events := make([]core.SubscriptionChangeEvent, 0)
 	go func() {
 		for {
 			select {
@@ -209,7 +209,6 @@ func TestGenerateSubscriptionChangesReadFromDatabase(t *testing.T) {
 
 	// Check that the correct event was received
 	require.Len(t, events, 1)
-	assert.Equal(t, core.NewSubscriptionEvent, events[0].Type)
 	assert.Equal(t, csub.ID, events[0].Subscription.ID)
 }
 
@@ -232,13 +231,13 @@ func TestGenerateSubscriptionChangesReadFromDatabaseMany(t *testing.T) {
 		createdIds = append(createdIds, csub.ID)
 	}
 
-	subChanges := make(chan core.SubscriptionSetEvent)
+	subChanges := make(chan core.SubscriptionChangeEvent)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	// Run a goroutine to capture the events from subChanges
-	events := make([]core.SubscriptionSetEvent, 0)
+	events := make([]core.SubscriptionChangeEvent, 0)
 	go func() {
 		for {
 			select {
@@ -260,7 +259,6 @@ func TestGenerateSubscriptionChangesReadFromDatabaseMany(t *testing.T) {
 	// Check that the correct event was received
 	require.Len(t, events, 100)
 	for i, evt := range events {
-		assert.Equal(t, core.NewSubscriptionEvent, evt.Type)
 		// Check that the ID is in the list of created IDs
 		found := false
 		for _, id := range createdIds {

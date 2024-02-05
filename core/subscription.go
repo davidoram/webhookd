@@ -100,6 +100,7 @@ func (s *Subscription) Start(ctx context.Context, kafkaServers string) {
 		case <-ctx.Done():
 			slog.Info("consume loop terminating", slog.String("consumer_id", s.ID.String()))
 			run = false
+			err = context.Canceled
 		case <-pushTicker.C:
 			if len(batch) > 0 {
 				var err error
@@ -156,7 +157,7 @@ func (s *Subscription) Start(ctx context.Context, kafkaServers string) {
 	for l := range s.listeners {
 		s.listeners[l].SubscriptionEvent(SubscriptionEvent{Type: SubscriptionEventStop, Subscription: s})
 	}
-	if err != nil {
+	if err != nil && err != context.Canceled {
 		slog.Error("consumer stopped with error", slog.String("consumer_id", s.ID.String()), slog.Any("error", err))
 	} else {
 		slog.Info("consumer stopped", slog.String("consumer_id", s.ID.String()))
