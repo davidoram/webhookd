@@ -56,9 +56,9 @@ dockerbuild-test-endpoint:
 	docker build --progress=plain -t davidoram/test-endpoint -f cmd/test-endpoint/Dockerfile .
 dockerbuild: dockerbuild-webhookd dockerbuild-csv-generate dockerbuild-csv-publish dockerbuild-test-endpoint
 	
-load-test-build: build
-	docker build -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
-
+dockerrun-csv-generate-small:
+	mkdir -p load-test/data
+	docker run --rm -v $(PWD)/load-test/data:/app davidoram/csv-generate -csv /app/small.csv -rows 1000 -topics -duration 1m
 
 coverage:
 	mkdir -p build 
