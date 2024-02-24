@@ -1,7 +1,7 @@
 name: LoadTest
 
 # Note; this workflow is not triggered by any event, but can be manually triggered
-#       It only works on the 'main' branch.concurrency: 
+#       It only works on the 'main' branch 
 #       See https://docs.github.com/en/actions/using-workflows/manually-running-a-workflow
 on: workflow_dispatch
 
@@ -30,39 +30,20 @@ jobs:
   docker:
     timeout-minutes: 10
     runs-on: ubuntu-latest
-    strategy:
-        matrix:
-          go-version: [ '1.21' ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
   
+      - name: Build Docker images
+        run: make dockerbuild
+            
+      - name: Generate test data
+        run: make test
+  
       - name: Start load test containers
         run: make load-test-setup
   
-      - name: Setup Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ matrix.go-version }}
-  
-      - name: Install-deps
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -qq -y make git curl gcc g++ ca-certificates
-          git clone https://github.com/edenhill/librdkafka.git -b v1.4.4
-          cd librdkafka
-          ./configure --install-deps --prefix /usr
-          make
-          sudo make install
-          cd ..
-          rm -rf librdkafka
-    
-      - name: Build
-        run: make build
-            
-      - name: Run tests
-        run: make test
-  
+
       - name: Stop containers
         if: always()
         run: docker-compose -f "docker-compose.yml" down      

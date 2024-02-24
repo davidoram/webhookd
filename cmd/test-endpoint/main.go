@@ -177,16 +177,31 @@ func main() {
 		slog.Info("subscription API call ok", slog.Any("url", url), slog.Any("status", resp.StatusCode), slog.String("body", string(body)))
 	}
 
-	// Start a ticker to log the new messages saved to the database in the last period
-	ticker := time.NewTicker(1 * time.Second)
+	// Start a movingAverageTicker to log the new messages saved to the database in the last period
+	movingAverageTicker := time.NewTicker(1 * time.Second)
+	defer movingAverageTicker.Stop()
+
+	// Start another ticker to display total messages in the database periodically
+	logTotalsTicker := time.NewTicker(15 * time.Second)
+	defer logTotalsTicker.Stop()
+
 	go func() {
 		for {
 			select {
-			case <-ticker.C:
+			case <-movingAverageTicker.C:
 				sma30(float64(newMsgCnt))
 				newMsgCnt = 0
+			case <-logTotalsTicker.C:
+				tot, err := CountMessages(ctx, db)
+				if err != nil {
+					slog.Error("Error counting messages", slog.Any("error", err))
+				}
+				totDup, err := CountDuplicateMessages(ctx, db)
+				if err != nil {
+					slog.Error("Error counting duplicate messages", slog.Any("error", err))
+				}
+				slog.Info("total messages", slog.Any("total", tot), slog.Any("duplicates", totDup))
 			case <-ctx.Done():
-				ticker.Stop()
 				return
 			}
 		}
@@ -365,7 +380,7 @@ func (hctx HandlerContext) SaveMessages(w http.ResponseWriter, r *http.Request, 
 
 	// Update the message count
 	newMsgCnt += len(batch.Messages)
-	slog.Error("Recieved batch of messages", slog.Any("batch_size", len(batch.Messages)))
+	slog.Info("received batch of messages", slog.Any("batch_size", len(batch.Messages)))
 	w.WriteHeader(http.StatusCreated)
 	w.Write(body)
 }
@@ -385,7 +400,14 @@ func (hctx HandlerContext) GetStatistics(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	payload := fmt.Sprintf(`{"total": %d, "average": %f}`, tot, sma30(0))
+	dup, err := CountDuplicateMessages(ctx, hctx.Db)
+	if err != nil {
+		slog.Error("Error counting duplicate messages", slog.Any("error", err))
+		http.Error(w, "Error counting duplicate messages", http.StatusInternalServerError)
+		return
+	}
+
+	payload := fmt.Sprintf(`{"total": %d, "duplicate": %d, "avg_msg_per_sec_last_30s": %f}`, tot, dup, sma30(0))
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(payload))
 }
@@ -397,8 +419,17 @@ func CountMessages(ctx context.Context, db *sql.DB) (int, error) {
 	return count, err
 }
 
+// CountDuplicateMessages returns the total number of duplicate messages saved to the database
+func CountDuplicateMessages(ctx context.Context, db *sql.DB) (int, error) {
+	var count int
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM duplicate_messages`).Scan(&count)
+	return count, err
+}
+
 // SimpleMovingAverage takes a period, it keeps a record of that many values, and
-// returns a function that will calculate the simple moving average over that period
+// returns a function that will calculate the simple moving average over that period.
+// The period is the number of values to average over, eg: If the period is 3 and you supply a number
+// every second, the average will be over the last 3 seconds.
 // See https://rosettacode.org/wiki/Averages/Simple_moving_average
 func SimpleMovingAverage(period int) func(float64) float64 {
 	var i int

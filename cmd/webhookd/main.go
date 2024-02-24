@@ -16,9 +16,7 @@ import (
 
 	"github.com/davidoram/webhookd/adapter"
 	"github.com/davidoram/webhookd/core"
-	"github.com/davidoram/webhookd/view"
 	"github.com/davidoram/webhookd/web"
-	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 
 	// Routing proposal extension to go stdlib in go 1.22
@@ -62,14 +60,13 @@ func main() {
 
 	// Create a subscription change channel that will be used to notify
 	// the subscription manager of changes to the subscriptions
-	subChanges := make(chan core.SubscriptionSetEvent)
+	subChanges := make(chan core.SubscriptionChangeEvent)
 
 	// Create a subscription manager that will manage the subscriptions
 	// and their lifecycle, and start it
 	manager := core.NewSubscriptionManager(*kafkaBootstrapServers)
 	// start the subscription manager in a goroutine
 	go manager.Start(ctx, subChanges)
-	defer manager.Close()
 	slog.Info("started subscription manager", slog.String("kafka", *kafkaBootstrapServers))
 
 	// Start a goroutine that will poll the database for changes to the subscriptions
@@ -136,7 +133,7 @@ func main() {
 	<-done
 }
 
-func GenerateSubscriptionChangesWithRecovery(ctx context.Context, db *sql.DB, subChanges chan core.SubscriptionSetEvent, pollingPeriod time.Duration) {
+func GenerateSubscriptionChangesWithRecovery(ctx context.Context, db *sql.DB, subChanges chan core.SubscriptionChangeEvent, pollingPeriod time.Duration) {
 	var wg sync.WaitGroup
 	errorOrPanic := false
 	wg.Add(1)
@@ -155,7 +152,7 @@ func GenerateSubscriptionChangesWithRecovery(ctx context.Context, db *sql.DB, su
 
 	wg.Wait()
 	if errorOrPanic {
-		os.Exit(1)
+		os.Exit(1) // TODO wrap in interface
 	}
 }
 
@@ -164,45 +161,35 @@ func GenerateSubscriptionChangesWithRecovery(ctx context.Context, db *sql.DB, su
 // then it loops, detecting any changes to the subscriptions in the database and sends them to the channel
 // as NewSubscriptionEvent, UpdatedSubscriptionEvent or DeletedSubscriptionEvent.
 // It exists when the context is cancelled, or an error occurs.
-func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges chan core.SubscriptionSetEvent, pollingPeriod time.Duration) error {
-
-	vSubs := view.SubscriptionCollection{
-		Subscriptions: []view.Subscription{},
-		Offset:        0,
-		Limit:         100,
-	}
-
-	// Create a map of the subscriptions by ID
-	cSubMap := map[uuid.UUID]core.Subscription{}
+func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges chan core.SubscriptionChangeEvent, pollingPeriod time.Duration) error {
 
 	// Read the subscriptions in batches, until all subscriptions have been read
 	maxUpdatedAt := time.Time{}
-	var err error
+	offset := int64(0)
+	limit := int64(100)
+	slog.Info("reading active subscriptions from database")
 	for {
+		// Check if the context has been cancelled
+		select {
+		case <-ctx.Done():
+			return context.Canceled
+		default:
+		}
+
 		// Get all the subscriptions from the database
-		vSubs, err = core.GetActiveSubscriptions(ctx, db, vSubs.Offset, vSubs.Limit)
+		subs, err := core.GetActiveSubscriptions(ctx, db, offset, limit)
 		if err != nil {
 			return err
 		}
-		slog.Info("startup read subscriptions in database",
-			slog.Any("offset", vSubs.Offset),
-			slog.Any("limit", vSubs.Limit),
-			slog.Any("found", len(vSubs.Subscriptions)))
 
-		// Save each subscription to the map, send each subscription to the channel as a NewSubscriptionEvent,
+		// Send each subscription to the channel,
 		// and find the max updated_at time/ so we can detect any new subscriptions added to the database
-		for _, vsub := range vSubs.Subscriptions {
+		for _, vsub := range subs.Subscriptions {
 			csub, err := adapter.ViewToCoreAdapter(vsub)
 			if err != nil {
 				return err
 			}
-			cSubMap[vsub.ID] = csub
-
-			slog.Info("subscription set event", slog.String("type", string(core.NewSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
-			subChanges <- core.SubscriptionSetEvent{
-				Type:         core.NewSubscriptionEvent,
-				Subscription: &csub,
-			}
+			subChanges <- core.SubscriptionChangeEvent{Subscription: &csub}
 
 			if vsub.UpdatedAt.After(maxUpdatedAt) {
 				maxUpdatedAt = vsub.UpdatedAt
@@ -210,89 +197,55 @@ func GenerateSubscriptionChanges(ctx context.Context, db *sql.DB, subChanges cha
 		}
 
 		// If we have read all the subscriptions, exit the loop
-		if len(vSubs.Subscriptions) == 0 {
+		if int64(len(subs.Subscriptions)) < limit {
 			break
 		}
 
 		// Update the offset, so we can read the next batch of subscriptions
-		vSubs.Offset = vSubs.Offset + vSubs.Limit
+		offset = offset + limit
 	}
 
 	// start a loop that will run until the context is cancelled, or an error occurs
 	// the loop will detect any changes to the subscriptions in the database and send them to the channel
-	// as NewSubscriptionEvent, UpdatedSubscriptionEvent or DeletedSubscriptionEvent
+	slog.Info("polling for updated subscriptions from database")
+	offset = int64(0)
+	limit = int64(100)
 	for {
-		slog.Info("polling database for subscription changes")
+		// Check if the context has been cancelled
 		select {
 		case <-ctx.Done():
-			return nil
+			return context.Canceled
 		default:
 		}
 
 		// Get all the subscriptions from the database, updated since the maxUpdatedAt time
-		vSubs, err := core.GetSubscriptionsUpdatedSince(ctx, db, maxUpdatedAt, 0, 100)
+		subs, err := core.GetSubscriptionsUpdatedSince(ctx, db, maxUpdatedAt, offset, limit)
 		if err != nil {
 			return err
 		}
 
-		// Create a map of the 'updated' subscriptions by ID
-		changedSubMap := map[uuid.UUID]core.Subscription{}
-		for _, vSub := range vSubs.Subscriptions {
-			csub, err := adapter.ViewToCoreAdapter(vSub)
-			if err != nil {
-				return err
-			}
-			changedSubMap[vSub.ID] = csub
-		}
+		if len(subs.Subscriptions) > 0 {
+			slog.Info("found subscription changes in db", slog.Any("found", len(subs.Subscriptions)))
 
-		// Process any changes to the subscriptions
-		for id, csub := range changedSubMap {
+			for _, vsub := range subs.Subscriptions {
+				csub, err := adapter.ViewToCoreAdapter(vsub)
+				if err != nil {
+					return err
+				}
 
-			// New if not in the subMap
-			if _, ok := cSubMap[id]; !ok {
-
-				// Update the map
-				cSubMap[csub.ID] = csub
-
-				slog.Info("subscription set event", slog.String("type", string(core.NewSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
+				slog.Info("subscription change event", slog.Any("id", csub.ID), slog.String("name", csub.Name), slog.Any("active", csub.IsActive()), slog.Any("updated_at", csub.UpdatedAt))
 				// Publish the change to the channel
-				subChanges <- core.SubscriptionSetEvent{
-					Type:         core.NewSubscriptionEvent,
-					Subscription: &csub,
-				}
+				subChanges <- core.SubscriptionChangeEvent{Subscription: &csub}
 
-			} else {
-				// Updated if IsActive
-				if csub.IsActive() {
-					// Update the map
-					cSubMap[csub.ID] = csub
-
-					slog.Info("subscription set event", slog.String("type", string(core.UpdatedSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
-					// Publish the change to the channel
-					subChanges <- core.SubscriptionSetEvent{
-						Type:         core.UpdatedSubscriptionEvent,
-						Subscription: &csub,
-					}
-
-				} else {
-					// Subscription deleted, remove from the map
-					delete(cSubMap, csub.ID)
-
-					slog.Info("subscription set event", slog.String("type", string(core.DeletedSubscriptionEvent)), slog.Any("id", csub.ID), slog.String("name", csub.Name))
-					// Publish the change to the channel
-					subChanges <- core.SubscriptionSetEvent{
-						Type:         core.DeletedSubscriptionEvent,
-						Subscription: &csub,
-					}
-
+				// Update the maxUpdatedAt time
+				if csub.UpdatedAt.After(maxUpdatedAt) {
+					maxUpdatedAt = csub.UpdatedAt
 				}
 			}
-			// Update the maxUpdatedAt time
-			if csub.UpdatedAt.After(maxUpdatedAt) {
-				maxUpdatedAt = csub.UpdatedAt
-			}
+		} else {
+			// Only sleep if we didn't find any changes
+			// Sleep for the polling period
+			time.Sleep(pollingPeriod)
 		}
-		// Sleep for the polling period
-		time.Sleep(pollingPeriod)
 	}
 }

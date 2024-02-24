@@ -29,6 +29,12 @@ install-librdkafka:
 	cd ..
 	rm -rf librdkafka
 
+install-sqldiff-mac:
+	brew install sqldiff
+
+install-sqldiff-linux:
+	sudo apt-get install -y sqldiff
+
 clean:
 	rm -rf build load-test/data
 	mkdir -p load-test/data
@@ -50,9 +56,9 @@ dockerbuild-test-endpoint:
 	docker build --progress=plain -t davidoram/test-endpoint -f cmd/test-endpoint/Dockerfile .
 dockerbuild: dockerbuild-webhookd dockerbuild-csv-generate dockerbuild-csv-publish dockerbuild-test-endpoint
 	
-load-test-build: build
-	docker build -t davidoram/csv-publish -f cmd/csv-publish/Dockerfile .
-
+dockerrun-csv-generate-small:
+	mkdir -p load-test/data
+	docker run --rm -v $(PWD)/load-test/data:/app davidoram/csv-generate -csv /app/small.csv -rows 1000 -topics -duration 1m
 
 coverage:
 	mkdir -p build 
@@ -65,7 +71,7 @@ unit-test-setup:
 unit-test-teardown:
 	docker-compose -f docker-compose.yml down 	
 
-load-test-setup:
+load-test-setup: load-test-teardown
 	docker compose --file load-test/docker-compose.yml up --detach --force-recreate --remove-orphans
 
 load-test-teardown:

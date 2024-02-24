@@ -77,13 +77,13 @@ func UpdateSubscription(ctx context.Context, db *sql.DB, vsub view.Subscription)
 }
 
 // GetSubscriptionsUpdatedSince returns a list of subscriptions that have been updated since the specified time
-// it includes soft deleted subscriptions
+// it includes soft deleted subscriptions, in order of being updated
 func GetSubscriptionsUpdatedSince(ctx context.Context, db *sql.DB, since time.Time, offset, limit int64) (view.SubscriptionCollection, error) {
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, data, created_at, updated_at, deleted_at 
 		FROM subscriptions 
 		WHERE updated_at > ?
-		ORDER BY created_at
+		ORDER BY updated_at
 		LIMIT ?
 		OFFSET ?`, since, limit, offset)
 	if err != nil {

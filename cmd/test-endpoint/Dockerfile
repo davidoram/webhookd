@@ -17,7 +17,7 @@ RUN cd cmd/test-endpoint && ls -l && \
     *.go
 
 # Use a minimal Alpine image as the base image
-FROM alpine:latest
+FROM alpine:3.18.6
 
 # Install SQLite
 RUN apk --no-cache add sqlite

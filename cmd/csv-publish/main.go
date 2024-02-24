@@ -246,12 +246,12 @@ func main() {
 	slog.Info("csv-publish started")
 
 	// Wait for Kafka to be available
-	connected := core.TestConnection(*kafkaBootstrapServers)
+	connected := core.TCPConnect(*kafkaBootstrapServers)
 	waitUntil := time.Now().Add(60 * time.Second)
 	for !connected && time.Now().Before(waitUntil) {
 		slog.Info("Waiting for Kafka to be available", slog.String("servers", *kafkaBootstrapServers))
 		time.Sleep(5 * time.Second)
-		connected = core.TestConnection(*kafkaBootstrapServers)
+		connected = core.TCPConnect(*kafkaBootstrapServers)
 	}
 	if !connected {
 		slog.Error("Kafka not available", slog.String("servers", *kafkaBootstrapServers))

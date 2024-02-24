@@ -25,8 +25,10 @@ Provides the following functions:
 
 ```
 make clean dockerbuild
-build/csv-generate -csv load-test/data/input.csv -duration 1m -rows 1000 -topics 3
+build/csv-generate -csv load-test/data/input.csv -duration 1m -rows 1000 -topics 1
 make load-test-setup
+while true:
+  curl -X GET http://localhost:8081/statistics   # Returns {"total": 1000, "duplicate": 0, "avg_msg_per_sec_last_30s": 0.000000}
 ```
 
 
@@ -224,6 +226,14 @@ Clients can get webhook status as follows:
         SubscriptionListener --> SubscriptionEvent : sends
 
 ```
+
+Key flows:
+
+- On startup the `SubscriptionManager` starts each `Subscription` in its own goroutine. 
+- The `SubscriptionManager` keeps a map of `id` -> `Subscription`
+- If a subscription is changed via API, the `SubscriptionManager` stops the old subscription, discards it and starts a new `Subscription`
+- `Subscriptions` are started by calling `Start(context.Context)`, and stopped by cancelling the `context.Context` object, or by calling `Done()` which does the same thing.
+
 
 # Tests
 
